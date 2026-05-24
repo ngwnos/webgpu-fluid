@@ -1,0 +1,17 @@
+{
+  "name": "webgpu-fluid",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "packageManager": "bun@1.3.13",
+  "scripts": {
+    "build": "tsc --noEmit && vite build",
+    "dev": "vite --host 0.0.0.0",
+    "preview": "vite preview --host 0.0.0.0",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.2",
+    "vite": "^8.0.10"
+  }
+}
