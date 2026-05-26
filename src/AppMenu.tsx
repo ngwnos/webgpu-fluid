@@ -1,6 +1,7 @@
 import * as Menubar from '@radix-ui/react-menubar'
 import { useState } from 'react'
 
+import { CursorMovementGraph } from './CursorMovementGraph'
 import { FloatingWindow } from './FloatingWindow'
 
 export const VIEW_FLOATING_WINDOWS = [
@@ -22,54 +23,57 @@ export function AppMenu(): React.JSX.Element {
 
   return (
     <>
-      <Menubar.Root className="app-menubar" aria-label="Fluid controls">
-        <Menubar.Menu>
-          <Menubar.Trigger className="app-menubar__trigger">View</Menubar.Trigger>
-          <Menubar.Portal>
-            <Menubar.Content className="app-menubar__content" align="start" sideOffset={6}>
-              {VIEW_FLOATING_WINDOWS.map((window) => (
-                <Menubar.Item
-                  className="app-menubar__item"
-                  key={window.id}
-                  onSelect={() => openViewWindow(window.id)}
-                >
-                  {window.title}
-                </Menubar.Item>
-              ))}
-            </Menubar.Content>
-          </Menubar.Portal>
-        </Menubar.Menu>
+      <div className="app-menu-bar">
+        <Menubar.Root className="app-menubar" aria-label="Fluid controls">
+          <Menubar.Menu>
+            <Menubar.Trigger className="app-menubar__trigger">View</Menubar.Trigger>
+            <Menubar.Portal>
+              <Menubar.Content className="app-menubar__content" align="start" sideOffset={6}>
+                {VIEW_FLOATING_WINDOWS.map((window) => (
+                  <Menubar.Item
+                    className="app-menubar__item"
+                    key={window.id}
+                    onSelect={() => openViewWindow(window.id)}
+                  >
+                    {window.title}
+                  </Menubar.Item>
+                ))}
+              </Menubar.Content>
+            </Menubar.Portal>
+          </Menubar.Menu>
 
-        <Menubar.Menu>
-          <Menubar.Trigger className="app-menubar__trigger">Simulation</Menubar.Trigger>
-          <Menubar.Portal>
-            <Menubar.Content className="app-menubar__content" align="start" sideOffset={6}>
-              <Menubar.Item className="app-menubar__item">Reset</Menubar.Item>
-              <Menubar.Item className="app-menubar__item">Pause</Menubar.Item>
-            </Menubar.Content>
-          </Menubar.Portal>
-        </Menubar.Menu>
+          <Menubar.Menu>
+            <Menubar.Trigger className="app-menubar__trigger">Simulation</Menubar.Trigger>
+            <Menubar.Portal>
+              <Menubar.Content className="app-menubar__content" align="start" sideOffset={6}>
+                <Menubar.Item className="app-menubar__item">Reset</Menubar.Item>
+                <Menubar.Item className="app-menubar__item">Pause</Menubar.Item>
+              </Menubar.Content>
+            </Menubar.Portal>
+          </Menubar.Menu>
 
-        <Menubar.Menu>
-          <Menubar.Trigger className="app-menubar__trigger">Grid</Menubar.Trigger>
-          <Menubar.Portal>
-            <Menubar.Content className="app-menubar__content" align="start" sideOffset={6}>
-              <Menubar.Item className="app-menubar__item">Cell size</Menubar.Item>
-              <Menubar.Item className="app-menubar__item">Clear cells</Menubar.Item>
-            </Menubar.Content>
-          </Menubar.Portal>
-        </Menubar.Menu>
+          <Menubar.Menu>
+            <Menubar.Trigger className="app-menubar__trigger">Grid</Menubar.Trigger>
+            <Menubar.Portal>
+              <Menubar.Content className="app-menubar__content" align="start" sideOffset={6}>
+                <Menubar.Item className="app-menubar__item">Cell size</Menubar.Item>
+                <Menubar.Item className="app-menubar__item">Clear cells</Menubar.Item>
+              </Menubar.Content>
+            </Menubar.Portal>
+          </Menubar.Menu>
 
-        <Menubar.Menu>
-          <Menubar.Trigger className="app-menubar__trigger">Audio</Menubar.Trigger>
-          <Menubar.Portal>
-            <Menubar.Content className="app-menubar__content" align="start" sideOffset={6}>
-              <Menubar.Item className="app-menubar__item">Input</Menubar.Item>
-              <Menubar.Item className="app-menubar__item">Reactive sources</Menubar.Item>
-            </Menubar.Content>
-          </Menubar.Portal>
-        </Menubar.Menu>
-      </Menubar.Root>
+          <Menubar.Menu>
+            <Menubar.Trigger className="app-menubar__trigger">Audio</Menubar.Trigger>
+            <Menubar.Portal>
+              <Menubar.Content className="app-menubar__content" align="start" sideOffset={6}>
+                <Menubar.Item className="app-menubar__item">Input</Menubar.Item>
+                <Menubar.Item className="app-menubar__item">Reactive sources</Menubar.Item>
+              </Menubar.Content>
+            </Menubar.Portal>
+          </Menubar.Menu>
+        </Menubar.Root>
+        <CursorMovementGraph />
+      </div>
 
       <FloatingWindow
         title="Cell"
