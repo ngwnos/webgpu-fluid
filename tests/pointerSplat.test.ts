@@ -16,7 +16,9 @@ describe('createPointerSplatOptions', () => {
   })
 
   test('continues a pointer trail with velocity and previous position', () => {
-    expect(createPointerSplatOptions({ x: 0.4, y: 0.25 }, { x: 0.1, y: 0.75 }, false)).toEqual({
+    expect(createPointerSplatOptions({ x: 0.4, y: 0.25 }, { x: 0.1, y: 0.75 }, false, {
+      movementStrength: 1,
+    })).toEqual({
       x: 0.4,
       y: 0.25,
       strength: 0.9,
@@ -27,5 +29,14 @@ describe('createPointerSplatOptions', () => {
       lastX: 0.1,
       lastY: 0.75,
     })
+  })
+
+  test('scales splat force from the smoothed cursor movement strength', () => {
+    expect(createPointerSplatOptions({ x: 0.4, y: 0.25 }, { x: 0.1, y: 0.75 }, false, {
+      movementStrength: 0,
+    }).strength).toBe(0.08)
+    expect(createPointerSplatOptions({ x: 0.4, y: 0.25 }, { x: 0.1, y: 0.75 }, false, {
+      movementStrength: 0.5,
+    }).strength).toBeCloseTo(0.49)
   })
 })

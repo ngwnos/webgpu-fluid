@@ -17,6 +17,7 @@ export type CursorMovementEnvelopeOptions = {
 export const CURSOR_MOVEMENT_GRAPH_WIDTH = 128
 export const CURSOR_MOVEMENT_GRAPH_HEIGHT = 26
 export const CURSOR_MOVEMENT_GRAPH_MAX_DELTA = 24
+export const CURSOR_MOVEMENT_SAMPLE_INTERVAL_MS = 1000 / 30
 export const CURSOR_MOVEMENT_ATTACK_MS = 80
 export const CURSOR_MOVEMENT_RELEASE_MS = 260
 

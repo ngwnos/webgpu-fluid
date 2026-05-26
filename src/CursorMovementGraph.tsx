@@ -3,6 +3,7 @@ import { useEffect, useRef } from 'react'
 import {
   CURSOR_MOVEMENT_GRAPH_HEIGHT,
   CURSOR_MOVEMENT_GRAPH_WIDTH,
+  CURSOR_MOVEMENT_SAMPLE_INTERVAL_MS,
   advanceCursorMovementEnvelope,
   resolveCursorMovementGraphSample,
   type CursorMovementDelta,
@@ -10,7 +11,6 @@ import {
 
 const CSS_WIDTH = CURSOR_MOVEMENT_GRAPH_WIDTH
 const CSS_HEIGHT = CURSOR_MOVEMENT_GRAPH_HEIGHT
-const GRAPH_SAMPLE_INTERVAL_MS = 1000 / 30
 
 export function CursorMovementGraph(): React.JSX.Element {
   const movementCanvasRef = useRef<HTMLCanvasElement | null>(null)
@@ -69,7 +69,7 @@ export function CursorMovementGraph(): React.JSX.Element {
 
     const renderFrame = (time: DOMHighResTimeStamp) => {
       const elapsedMs = time - lastSampleTime
-      if (movementContext && speedContext && elapsedMs >= GRAPH_SAMPLE_INTERVAL_MS) {
+      if (movementContext && speedContext && elapsedMs >= CURSOR_MOVEMENT_SAMPLE_INTERVAL_MS) {
         const delta = pendingDelta.current
         movementEnvelope.current = advanceCursorMovementEnvelope(movementEnvelope.current, delta, elapsedMs)
         drawMovementGraphSample(movementContext, movementCanvas, delta, pixelRatio)

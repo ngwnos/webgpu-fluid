@@ -4,6 +4,11 @@ import { createRoot } from 'react-dom/client'
 import { AppMenu } from './AppMenu'
 import { resolveCanvasViewport } from './canvasViewport'
 import {
+  CURSOR_MOVEMENT_SAMPLE_INTERVAL_MS,
+  advanceCursorMovementEnvelope,
+  type CursorMovementDelta,
+} from './cursorMovementGraphModel'
+import {
   WHITE_DYE_FLUID_DEFAULTS,
   createWhiteDyeFluidSimulation,
 } from './fluid'
@@ -75,6 +80,10 @@ async function start(canvas: HTMLCanvasElement, statusElement: HTMLElement): Pro
   let activePaint: GridPaintAction | null = null
   let lastPaintCell: GridCell | null = null
   let lastFluidPointer: NormalizedPointerPoint | null = null
+  let lastCursorPixel: { readonly x: number; readonly y: number } | null = null
+  let pendingCursorDelta: CursorMovementDelta = { x: 0, y: 0 }
+  let cursorMovementEnvelope = 0
+  let lastCursorMovementSampleTime = performance.now()
 
   const gridCellSizePx = () => GRID_CELL_SIZE_CSS_PX * renderPixelRatio
 
@@ -147,9 +156,35 @@ async function start(canvas: HTMLCanvasElement, statusElement: HTMLElement): Pro
     }
   }
 
+  const sampleCursorMovementEnvelope = (event: PointerEvent): number => {
+    const pixel = { x: event.clientX, y: event.clientY }
+    const fallbackDelta = lastCursorPixel
+      ? { x: pixel.x - lastCursorPixel.x, y: pixel.y - lastCursorPixel.y }
+      : { x: 0, y: 0 }
+    const movementX = Number.isFinite(event.movementX) && event.movementX !== 0 ? event.movementX : fallbackDelta.x
+    const movementY = Number.isFinite(event.movementY) && event.movementY !== 0 ? event.movementY : fallbackDelta.y
+
+    pendingCursorDelta = {
+      x: pendingCursorDelta.x + movementX,
+      y: pendingCursorDelta.y + movementY,
+    }
+    lastCursorPixel = pixel
+
+    const now = performance.now()
+    const elapsedMs = now - lastCursorMovementSampleTime
+    if (elapsedMs >= CURSOR_MOVEMENT_SAMPLE_INTERVAL_MS) {
+      cursorMovementEnvelope = advanceCursorMovementEnvelope(cursorMovementEnvelope, pendingCursorDelta, elapsedMs)
+      pendingCursorDelta = { x: 0, y: 0 }
+      lastCursorMovementSampleTime = now
+    }
+
+    return cursorMovementEnvelope
+  }
+
   const addFluidSplat = (event: PointerEvent, prime = false) => {
     const point = getFluidPointer(event)
-    simulation.addSplat(createPointerSplatOptions(point, lastFluidPointer, prime))
+    const movementStrength = sampleCursorMovementEnvelope(event)
+    simulation.addSplat(createPointerSplatOptions(point, lastFluidPointer, prime, { movementStrength }))
     lastFluidPointer = point
   }
 
@@ -185,6 +220,8 @@ async function start(canvas: HTMLCanvasElement, statusElement: HTMLElement): Pro
     activePaint = null
     lastPaintCell = null
     lastFluidPointer = null
+    lastCursorPixel = null
+    pendingCursorDelta = { x: 0, y: 0 }
   }
 
   canvas.addEventListener('pointerdown', beginPaint)
