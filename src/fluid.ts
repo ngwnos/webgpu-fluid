@@ -1246,9 +1246,9 @@ ${COMPUTE_MAIN_PREFIX}
   let distSq = dot(scaled, scaled);
   let radiusSq = max(params.splat.z * params.splat.z, 0.000001);
   let influence = exp(-distSq / radiusSq) * params.splat.w;
-  let current = textureSampleLevel(sourceA, linearSampler, uv, 0.0).x;
-  let density = clamp(current + influence, 0.0, 1.0);
-  storeValue(id, vec4f(density, density, density, 1.0));
+  let current = textureSampleLevel(sourceA, linearSampler, uv, 0.0).xyz;
+  let density = clamp(current + vec3f(influence), vec3f(0.0), vec3f(1.0));
+  storeValue(id, vec4f(density, 1.0));
 }
 `
 
@@ -1519,8 +1519,8 @@ fn vertexMain(@builtin(vertex_index) vertexIndex: u32) -> VertexOut {
 
 @fragment
 fn fragmentMain(input: VertexOut) -> @location(0) vec4f {
-  let dye = textureSampleLevel(dyeTexture, dyeSampler, input.sourceUv, 0.0).x;
-  let density = clamp(dye, 0.0, 1.0);
-  return vec4f(vec3f(density), 1.0);
+  let dye = textureSampleLevel(dyeTexture, dyeSampler, input.sourceUv, 0.0).xyz;
+  let density = clamp(dye, vec3f(0.0), vec3f(1.0));
+  return vec4f(density, 1.0);
 }
 `
