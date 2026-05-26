@@ -22,19 +22,10 @@ body {
   background: #070d0f;
 }
 
-.app-menu-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  min-height: 36px;
-}
-
 .app-menubar {
   display: flex;
   align-items: center;
   gap: 2px;
-  flex: 1 1 auto;
   min-height: 36px;
   padding: 0 8px;
   font: 13px/1.2 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -45,7 +36,6 @@ body {
   flex: 0 0 auto;
   width: 128px;
   height: 26px;
-  margin-right: 8px;
   background: #020608;
   border: 1px solid rgba(82, 210, 228, 0.28);
   border-radius: 4px;
@@ -164,7 +154,14 @@ body {
 }
 
 .cursor-window {
+  display: grid;
+  gap: 12px;
   min-height: 56px;
+}
+
+.cursor-window .cursor-movement-graph {
+  width: 100%;
+  height: 34px;
 }
 
 .cell-window__field {
