@@ -3,6 +3,7 @@ import { useEffect, useRef } from 'react'
 import {
   CURSOR_MOVEMENT_GRAPH_HEIGHT,
   CURSOR_MOVEMENT_GRAPH_WIDTH,
+  advanceCursorMovementEnvelope,
   resolveCursorMovementGraphSample,
   type CursorMovementDelta,
 } from './cursorMovementGraphModel'
@@ -12,31 +13,40 @@ const CSS_HEIGHT = CURSOR_MOVEMENT_GRAPH_HEIGHT
 const GRAPH_SAMPLE_INTERVAL_MS = 1000 / 30
 
 export function CursorMovementGraph(): React.JSX.Element {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const movementCanvasRef = useRef<HTMLCanvasElement | null>(null)
+  const speedCanvasRef = useRef<HTMLCanvasElement | null>(null)
   const pendingDelta = useRef<CursorMovementDelta>({ x: 0, y: 0 })
   const lastPointer = useRef<{ readonly x: number; readonly y: number } | null>(null)
+  const movementEnvelope = useRef(0)
 
   useEffect(() => {
     let animationFrame = 0
-    let context: CanvasRenderingContext2D | null = null
+    let movementContext: CanvasRenderingContext2D | null = null
+    let speedContext: CanvasRenderingContext2D | null = null
     let pixelRatio = 1
     let lastSampleTime = performance.now()
 
-    const canvas = canvasRef.current
-    if (!canvas) return undefined
+    const movementCanvas = movementCanvasRef.current
+    const speedCanvas = speedCanvasRef.current
+    if (!movementCanvas || !speedCanvas) return undefined
 
     const resizeCanvas = () => {
       const nextPixelRatio = Math.max(1, Math.min(window.devicePixelRatio || 1, 2))
       const width = Math.round(CSS_WIDTH * nextPixelRatio)
       const height = Math.round(CSS_HEIGHT * nextPixelRatio)
 
-      if (canvas.width !== width || canvas.height !== height) {
-        canvas.width = width
-        canvas.height = height
+      for (const canvas of [movementCanvas, speedCanvas]) {
+        if (canvas.width !== width || canvas.height !== height) {
+          canvas.width = width
+          canvas.height = height
+        }
       }
+
       pixelRatio = nextPixelRatio
-      context = canvas.getContext('2d')
-      if (context) clearGraph(context, canvas)
+      movementContext = movementCanvas.getContext('2d')
+      speedContext = speedCanvas.getContext('2d')
+      if (movementContext) clearGraph(movementContext, movementCanvas)
+      if (speedContext) clearGraph(speedContext, speedCanvas)
     }
 
     const handlePointerMove = (event: PointerEvent) => {
@@ -58,8 +68,12 @@ export function CursorMovementGraph(): React.JSX.Element {
     }
 
     const renderFrame = (time: DOMHighResTimeStamp) => {
-      if (context && time - lastSampleTime >= GRAPH_SAMPLE_INTERVAL_MS) {
-        drawGraphSample(context, canvas, pendingDelta.current, pixelRatio)
+      const elapsedMs = time - lastSampleTime
+      if (movementContext && speedContext && elapsedMs >= GRAPH_SAMPLE_INTERVAL_MS) {
+        const delta = pendingDelta.current
+        movementEnvelope.current = advanceCursorMovementEnvelope(movementEnvelope.current, delta, elapsedMs)
+        drawMovementGraphSample(movementContext, movementCanvas, delta, pixelRatio)
+        drawEnvelopeGraphSample(speedContext, speedCanvas, movementEnvelope.current, pixelRatio)
         pendingDelta.current = { x: 0, y: 0 }
         lastSampleTime = time
       }
@@ -81,13 +95,22 @@ export function CursorMovementGraph(): React.JSX.Element {
   }, [])
 
   return (
-    <canvas
-      ref={canvasRef}
-      className="cursor-movement-graph"
-      width={CSS_WIDTH}
-      height={CSS_HEIGHT}
-      aria-label="Cursor movement graph"
-    />
+    <div className="cursor-movement-graphs">
+      <canvas
+        ref={movementCanvasRef}
+        className="cursor-movement-graph"
+        width={CSS_WIDTH}
+        height={CSS_HEIGHT}
+        aria-label="Cursor X and Y movement graph"
+      />
+      <canvas
+        ref={speedCanvasRef}
+        className="cursor-movement-graph cursor-movement-graph--speed"
+        width={CSS_WIDTH}
+        height={CSS_HEIGHT}
+        aria-label="Cursor movement speed envelope graph"
+      />
+    </div>
   )
 }
 
@@ -97,7 +120,7 @@ function clearGraph(context: CanvasRenderingContext2D, canvas: HTMLCanvasElement
   context.fillRect(0, 0, canvas.width, canvas.height)
 }
 
-function drawGraphSample(
+function drawMovementGraphSample(
   context: CanvasRenderingContext2D,
   canvas: HTMLCanvasElement,
   delta: CursorMovementDelta,
@@ -122,6 +145,33 @@ function drawGraphSample(
   context.globalCompositeOperation = 'lighter'
   drawSampleBar(context, width - scroll, centerY, sample.x, amplitude, scroll, 'rgba(255, 48, 40, 0.82)')
   drawSampleBar(context, width - scroll, centerY, sample.y, amplitude, scroll, 'rgba(36, 116, 255, 0.82)')
+}
+
+function drawEnvelopeGraphSample(
+  context: CanvasRenderingContext2D,
+  canvas: HTMLCanvasElement,
+  value: number,
+  pixelRatio: number,
+): void {
+  const scroll = Math.max(1, Math.round(pixelRatio))
+  const width = canvas.width
+  const height = canvas.height
+  const baselineY = height - Math.max(2, Math.round(2 * pixelRatio))
+  const amplitude = Math.max(1, baselineY - 2 * pixelRatio)
+  const sample = Math.min(Math.max(value, 0), 1)
+
+  context.globalCompositeOperation = 'copy'
+  context.drawImage(canvas, scroll, 0, width - scroll, height, 0, 0, width - scroll, height)
+
+  context.globalCompositeOperation = 'source-over'
+  context.fillStyle = '#020608'
+  context.fillRect(width - scroll, 0, scroll, height)
+  context.fillStyle = 'rgba(95, 126, 132, 0.24)'
+  context.fillRect(width - scroll, baselineY, scroll, Math.max(1, Math.round(pixelRatio)))
+
+  context.globalCompositeOperation = 'lighter'
+  context.fillStyle = 'rgba(60, 235, 94, 0.86)'
+  context.fillRect(width - scroll, baselineY - sample * amplitude, scroll, Math.max(1, sample * amplitude))
 }
 
 function drawSampleBar(
