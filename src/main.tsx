@@ -139,20 +139,18 @@ async function start(canvas: HTMLCanvasElement, statusElement: HTMLElement): Pro
     animationFrame = requestAnimationFrame(frame)
   }
 
-  const getGridCell = (event: PointerEvent): GridCell | null => {
-    const rect = canvas.getBoundingClientRect()
-    const layout = syncGridSelection()
-    return resolveGridCell(layout, {
-      x: ((event.clientX - rect.left) / Math.max(1, rect.width)) * canvas.width,
-      y: ((event.clientY - rect.top) / Math.max(1, rect.height)) * canvas.height,
-    })
-  }
-
-  const getFluidPointer = (event: PointerEvent): NormalizedPointerPoint => {
+  const getCanvasPoint = (event: PointerEvent): { readonly x: number; readonly y: number } => {
     const rect = canvas.getBoundingClientRect()
     return {
-      x: clamp01((event.clientX - rect.left) / Math.max(1, rect.width)),
-      y: clamp01((event.clientY - rect.top) / Math.max(1, rect.height)),
+      x: ((event.clientX - rect.left) / Math.max(1, rect.width)) * canvas.width,
+      y: ((event.clientY - rect.top) / Math.max(1, rect.height)) * canvas.height,
+    }
+  }
+
+  const getFluidPointer = (point: { readonly x: number; readonly y: number }): NormalizedPointerPoint => {
+    return {
+      x: clamp01(point.x / canvas.width),
+      y: clamp01(point.y / canvas.height),
     }
   }
 
@@ -181,11 +179,27 @@ async function start(canvas: HTMLCanvasElement, statusElement: HTMLElement): Pro
     return cursorMovementEnvelope
   }
 
-  const addFluidSplat = (event: PointerEvent, prime = false) => {
-    const point = getFluidPointer(event)
+  const resetFluidSplatTrail = () => {
+    lastFluidPointer = null
+    lastCursorPixel = null
+    pendingCursorDelta = { x: 0, y: 0 }
+    cursorMovementEnvelope = 0
+    lastCursorMovementSampleTime = performance.now()
+  }
+
+  const addFluidSplat = (event: PointerEvent, prime = false): GridCell | null => {
+    const canvasPoint = getCanvasPoint(event)
+    const cell = resolveGridCell(syncGridSelection(), canvasPoint)
+    if (!cell) {
+      resetFluidSplatTrail()
+      return null
+    }
+
+    const point = getFluidPointer(canvasPoint)
     const movementStrength = sampleCursorMovementEnvelope(event)
     simulation.addSplat(createPointerSplatOptions(point, lastFluidPointer, prime, { movementStrength }))
     lastFluidPointer = point
+    return cell
   }
 
   const paintToCell = (cell: GridCell) => {
@@ -200,8 +214,7 @@ async function start(canvas: HTMLCanvasElement, statusElement: HTMLElement): Pro
 
   const beginPaint = (event: PointerEvent) => {
     canvas.setPointerCapture(event.pointerId)
-    addFluidSplat(event, true)
-    const cell = getGridCell(event)
+    const cell = addFluidSplat(event, true)
     activePaint = null
     lastPaintCell = null
     if (!cell) return
@@ -211,17 +224,14 @@ async function start(canvas: HTMLCanvasElement, statusElement: HTMLElement): Pro
   }
 
   const continuePaint = (event: PointerEvent) => {
-    addFluidSplat(event)
-    const cell = activePaint ? getGridCell(event) : null
+    const cell = addFluidSplat(event)
     if (cell) paintToCell(cell)
   }
 
   const clearPaint = () => {
     activePaint = null
     lastPaintCell = null
-    lastFluidPointer = null
-    lastCursorPixel = null
-    pendingCursorDelta = { x: 0, y: 0 }
+    resetFluidSplatTrail()
   }
 
   canvas.addEventListener('pointerdown', beginPaint)
