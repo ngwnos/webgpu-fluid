@@ -9,6 +9,7 @@ import {
 
 const CSS_WIDTH = CURSOR_MOVEMENT_GRAPH_WIDTH
 const CSS_HEIGHT = CURSOR_MOVEMENT_GRAPH_HEIGHT
+const GRAPH_SAMPLE_INTERVAL_MS = 1000 / 30
 
 export function CursorMovementGraph(): React.JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
@@ -19,6 +20,7 @@ export function CursorMovementGraph(): React.JSX.Element {
     let animationFrame = 0
     let context: CanvasRenderingContext2D | null = null
     let pixelRatio = 1
+    let lastSampleTime = performance.now()
 
     const canvas = canvasRef.current
     if (!canvas) return undefined
@@ -55,11 +57,12 @@ export function CursorMovementGraph(): React.JSX.Element {
       lastPointer.current = null
     }
 
-    const renderFrame = () => {
-      if (context) {
+    const renderFrame = (time: DOMHighResTimeStamp) => {
+      if (context && time - lastSampleTime >= GRAPH_SAMPLE_INTERVAL_MS) {
         drawGraphSample(context, canvas, pendingDelta.current, pixelRatio)
+        pendingDelta.current = { x: 0, y: 0 }
+        lastSampleTime = time
       }
-      pendingDelta.current = { x: 0, y: 0 }
       animationFrame = requestAnimationFrame(renderFrame)
     }
 
