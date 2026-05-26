@@ -119,18 +119,28 @@ export function AppMenu(): React.JSX.Element {
                 data-active={blockGroupsState.activeGroupId === group.id}
                 key={group.id}
               >
-                <button
-                  className="cell-group__summary"
-                  type="button"
-                  aria-expanded={blockGroupsState.activeGroupId === group.id}
-                  onClick={() => setActiveBlockGroupId(group.id)}
-                >
-                  <span className="cell-group__swatch" style={{ backgroundColor: group.color }} aria-hidden="true" />
-                  <span className="cell-group__summary-text">
-                    <span className="cell-group__name">{group.name}</span>
-                    <span className="cell-group__type">{group.blockType}</span>
-                  </span>
-                </button>
+                <div className="cell-group__summary">
+                  <label className="cell-group__swatch" style={{ backgroundColor: group.color }}>
+                    <span className="sr-only">Color for {group.name}</span>
+                    <input
+                      type="color"
+                      value={group.color}
+                      onInput={(event) => updateBlockGroup(group.id, { color: event.currentTarget.value })}
+                      onChange={(event) => updateBlockGroup(group.id, { color: event.currentTarget.value })}
+                    />
+                  </label>
+                  <button
+                    className="cell-group__summary-button"
+                    type="button"
+                    aria-expanded={blockGroupsState.activeGroupId === group.id}
+                    onClick={() => setActiveBlockGroupId(group.id)}
+                  >
+                    <span className="cell-group__summary-text">
+                      <span className="cell-group__name">{group.name}</span>
+                      <span className="cell-group__type">{group.blockType}</span>
+                    </span>
+                  </button>
+                </div>
 
                 {blockGroupsState.activeGroupId === group.id ? (
                   <div className="cell-group__settings">
@@ -156,14 +166,6 @@ export function AppMenu(): React.JSX.Element {
                           </option>
                         ))}
                       </select>
-                    </label>
-                    <label className="cell-group__field cell-group__field--color">
-                      <span>Color</span>
-                      <input
-                        type="color"
-                        value={group.color}
-                        onChange={(event) => updateBlockGroup(group.id, { color: event.currentTarget.value })}
-                      />
                     </label>
                     <ConfirmActionButton
                       className="cell-group__delete"

@@ -1089,9 +1089,17 @@ fn fluidClearedAtUv(uv: vec2f) -> bool {
   return blockAtUv(uv) != 0u;
 }
 
-fn blockEffectAtUv(uv: vec2f) -> vec4f {
+fn colorFromBlockWord(word: u32) -> vec3f {
+  return vec3f(
+    f32((word >> 8u) & 255u) / 255.0,
+    f32((word >> 16u) & 255u) / 255.0,
+    f32((word >> 24u) & 255u) / 255.0,
+  );
+}
+
+fn blockEffectAtUv(uv: vec2f) -> mat2x4f {
   if (!obstacleEnabled()) {
-    return vec4f(0.0);
+    return mat2x4f(vec4f(0.0), vec4f(0.0));
   }
 
   let cellSize = params.obstacle.x;
@@ -1102,13 +1110,15 @@ fn blockEffectAtUv(uv: vec2f) -> vec4f {
   let local = pixel - params.obstacleOffset.xy;
 
   if (local.x < 0.0 || local.y < 0.0 || local.x >= gridSize.x || local.y >= gridSize.y) {
-    return vec4f(0.0);
+    return mat2x4f(vec4f(0.0), vec4f(0.0));
   }
 
   let baseCell = vec2i(floor(local / cellSize));
   var force = vec2f(0.0);
   var emitterFalloff = 0.0;
+  var emitterWeight = 0.0;
   var sinkFalloff = 0.0;
+  var emitterColor = vec3f(0.0);
 
   for (var offsetY = -3; offsetY <= 3; offsetY += 1) {
     for (var offsetX = -3; offsetX <= 3; offsetX += 1) {
@@ -1117,7 +1127,8 @@ fn blockEffectAtUv(uv: vec2f) -> vec4f {
         continue;
       }
 
-      let block = obstacleCells[u32(cell.y) * u32(columns) + u32(cell.x)] & 255u;
+      let word = obstacleCells[u32(cell.y) * u32(columns) + u32(cell.x)];
+      let block = word & 255u;
       if (block != 2u && block != 3u) {
         continue;
       }
@@ -1133,6 +1144,8 @@ fn blockEffectAtUv(uv: vec2f) -> vec4f {
         let falloff = normalized * normalized * (3.0 - 2.0 * normalized);
         let direction = fromCenter / distancePx;
         force += direction * params.blockFlow.x * falloff;
+        emitterColor += colorFromBlockWord(word) * falloff;
+        emitterWeight += falloff;
         emitterFalloff = max(emitterFalloff, falloff);
       }
 
@@ -1147,7 +1160,11 @@ fn blockEffectAtUv(uv: vec2f) -> vec4f {
     }
   }
 
-  return vec4f(force, emitterFalloff, sinkFalloff);
+  if (emitterWeight > 0.0) {
+    emitterColor /= emitterWeight;
+  }
+
+  return mat2x4f(vec4f(force, emitterFalloff, sinkFalloff), vec4f(emitterColor, 0.0));
 }
 
 fn sourceAVelocityBlocked(uv: vec2f) -> vec2f {
@@ -1247,8 +1264,9 @@ ${COMPUTE_MAIN_PREFIX}
   let sampled = sourceAVelocityBlocked(sampleUv);
   let decay = 1.0 / (1.0 + params.coefficients.x * params.time.x);
   let blockEffect = blockEffectAtUv(uv);
-  let damping = clamp(blockEffect.w * params.blockDye.z * params.time.x, 0.0, 0.96);
-  let updated = maxVelocityClamp((sampled * decay + blockEffect.xy * params.time.x) * (1.0 - damping));
+  let flow = blockEffect[0];
+  let damping = clamp(flow.w * params.blockDye.z * params.time.x, 0.0, 0.96);
+  let updated = maxVelocityClamp((sampled * decay + flow.xy * params.time.x) * (1.0 - damping));
   storeValue(id, vec4f(updated, 0.0, 1.0));
 }
 `
@@ -1268,9 +1286,11 @@ ${COMPUTE_MAIN_PREFIX}
   }
   let decay = 1.0 / (1.0 + params.coefficients.y * params.time.x);
   let blockEffect = blockEffectAtUv(uv);
-  let sinkAbsorption = clamp(blockEffect.w * params.blockDye.y * params.time.x, 0.0, 1.0);
-  let emitted = blockEffect.z * params.blockDye.x * params.time.x;
-  let density = clamp(sampled * decay * (1.0 - sinkAbsorption) + vec3f(emitted), vec3f(0.0), vec3f(1.0));
+  let flow = blockEffect[0];
+  let emitterColor = blockEffect[1].xyz;
+  let sinkAbsorption = clamp(flow.w * params.blockDye.y * params.time.x, 0.0, 1.0);
+  let emitted = flow.z * params.blockDye.x * params.time.x;
+  let density = clamp(sampled * decay * (1.0 - sinkAbsorption) + emitterColor * emitted, vec3f(0.0), vec3f(1.0));
   storeValue(id, vec4f(density, 1.0));
 }
 `
@@ -1413,6 +1433,14 @@ struct VertexOut {
 @group(0) @binding(0) var<uniform> grid: GridParams;
 @group(0) @binding(1) var<storage, read> activeCells: array<u32>;
 
+fn colorFromBlockWord(word: u32) -> vec3f {
+  return vec3f(
+    f32((word >> 8u) & 255u) / 255.0,
+    f32((word >> 16u) & 255u) / 255.0,
+    f32((word >> 24u) & 255u) / 255.0,
+  );
+}
+
 @vertex
 fn vertexMain(@builtin(vertex_index) vertexIndex: u32) -> VertexOut {
   var positions = array<vec2f, 3>(
@@ -1455,11 +1483,7 @@ fn fragmentMain(input: VertexOut) -> @location(0) vec4f {
   let halfLineWidth = max(grid.metrics.w * 0.5, 0.125);
   let lineAlpha = (1.0 - smoothstep(halfLineWidth, halfLineWidth + 1.0, distanceToLine)) * grid.offset.z;
   let fillAlpha = select(0.0, 0.42, isActive);
-  let fillColor = vec3f(
-    f32((word >> 8u) & 255u) / 255.0,
-    f32((word >> 16u) & 255u) / 255.0,
-    f32((word >> 24u) & 255u) / 255.0,
-  );
+  let fillColor = colorFromBlockWord(word);
   let alpha = fillAlpha + lineAlpha * (1.0 - fillAlpha);
   let color = (
     fillColor * fillAlpha +

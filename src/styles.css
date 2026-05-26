@@ -15,6 +15,17 @@ body {
   color: #d7e3e6;
 }
 
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 #menu {
   flex: 0 0 auto;
   min-height: 36px;
@@ -203,6 +214,19 @@ body {
   min-height: 42px;
   gap: 10px;
   padding: 7px 8px;
+}
+
+.cell-group__summary:hover,
+.cell-group__summary:focus-within {
+  background: rgba(17, 84, 96, 0.38);
+}
+
+.cell-group__summary-button {
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
+  min-width: 0;
+  align-self: stretch;
   color: #d7e3e6;
   background: transparent;
   border: 0;
@@ -211,20 +235,37 @@ body {
   cursor: pointer;
 }
 
-.cell-group__summary:hover,
-.cell-group__summary:focus-visible {
+.cell-group__summary-button:hover,
+.cell-group__summary-button:focus-visible {
   color: #ffffff;
-  background: rgba(17, 84, 96, 0.38);
   outline: none;
 }
 
 .cell-group__swatch {
+  position: relative;
   flex: 0 0 auto;
   width: 24px;
   height: 24px;
   border: 1px solid rgba(255, 255, 255, 0.68);
   border-radius: 4px;
   box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.28);
+  cursor: pointer;
+}
+
+.cell-group__swatch input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  opacity: 0;
+  border: 0;
+  cursor: pointer;
+}
+
+.cell-group__swatch:focus-within {
+  border-color: #ffffff;
+  box-shadow: 0 0 0 2px rgba(82, 210, 228, 0.46);
 }
 
 .cell-group__summary-text {
@@ -248,7 +289,7 @@ body {
 
 .cell-group__settings {
   display: grid;
-  grid-template-columns: 1fr 112px 58px;
+  grid-template-columns: 1fr 112px;
   gap: 8px;
   padding: 0 8px 8px;
 }
@@ -284,10 +325,6 @@ body {
 .cell-group__field select:focus {
   border-color: rgba(82, 210, 228, 0.55);
   outline: none;
-}
-
-.cell-group__field--color {
-  min-width: 58px;
 }
 
 .cell-group__delete {
