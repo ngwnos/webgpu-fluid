@@ -5,6 +5,7 @@ import {
 } from './fluid'
 
 const MAX_DEVICE_PIXEL_RATIO = 2
+const GRID_CELL_SIZE_CSS_PX = 40
 
 type RuntimeStatus = 'unavailable' | 'error'
 
@@ -52,9 +53,11 @@ async function start(canvas: HTMLCanvasElement, statusElement: HTMLElement): Pro
   let lastFrameTime = performance.now()
   let animationFrame = 0
   let lastPointer: { x: number; y: number } | null = null
+  let renderPixelRatio = 1
 
   const resize = () => {
     const pixelRatio = Math.min(window.devicePixelRatio || 1, MAX_DEVICE_PIXEL_RATIO)
+    renderPixelRatio = pixelRatio
     const width = Math.max(1, Math.round(window.innerWidth * pixelRatio))
     const height = Math.max(1, Math.round(window.innerHeight * pixelRatio))
 
@@ -76,7 +79,13 @@ async function start(canvas: HTMLCanvasElement, statusElement: HTMLElement): Pro
     lastFrameTime = time
 
     simulation.step(dt)
-    simulation.render(context.getCurrentTexture().createView(), format)
+    simulation.render(context.getCurrentTexture().createView(), format, {
+      grid: {
+        cellSizePx: GRID_CELL_SIZE_CSS_PX * renderPixelRatio,
+        lineWidthPx: renderPixelRatio,
+        opacity: 0.48,
+      },
+    })
     animationFrame = requestAnimationFrame(frame)
   }
 

@@ -1,3 +1,5 @@
+import { resolveGridLayout } from './gridLayout'
+
 const GPU_BUFFER_USAGE_FLAGS = {
   copyDst: 0x0008,
   uniform: 0x0040,
@@ -34,6 +36,16 @@ export type WhiteDyeFluidOptions = {
 }
 
 export type WhiteDyeFluidResolvedOptions = Required<WhiteDyeFluidOptions>
+
+export type GridOverlayOptions = {
+  readonly cellSizePx: number
+  readonly lineWidthPx?: number
+  readonly opacity?: number
+}
+
+export type WhiteDyeFluidRenderOptions = {
+  readonly grid?: GridOverlayOptions
+}
 
 export type WhiteDyeFluidSplatOptions = {
   readonly x: number
@@ -100,6 +112,8 @@ export const WHITE_DYE_FLUID_DEFAULTS = {
 
 const PARAM_FLOAT_COUNT = 24
 const PARAM_BYTE_LENGTH = PARAM_FLOAT_COUNT * Float32Array.BYTES_PER_ELEMENT
+const GRID_PARAM_FLOAT_COUNT = 12
+const GRID_PARAM_BYTE_LENGTH = GRID_PARAM_FLOAT_COUNT * Float32Array.BYTES_PER_ELEMENT
 const MIN_DELTA = 1 / 240
 const MAX_DELTA = 1 / 30
 
@@ -196,9 +210,13 @@ export class WhiteDyeFluidSimulation {
   private pipelines: FluidPipelines
   private renderPipeline: GPURenderPipeline | null = null
   private renderPipelineFormat: GPUTextureFormat | null = null
+  private gridRenderPipeline: GPURenderPipeline | null = null
+  private gridRenderPipelineFormat: GPUTextureFormat | null = null
   private readonly sampler: GPUSampler
   private readonly uniformBuffer: GPUBuffer
+  private readonly gridUniformBuffer: GPUBuffer
   private readonly params = new Float32Array(PARAM_FLOAT_COUNT)
+  private readonly gridParams = new Float32Array(GRID_PARAM_FLOAT_COUNT)
   private readonly pendingSplats: WhiteDyeFluidSplatEvent[] = []
   private pendingSplatHead = 0
   private velocityReadIndex = 0
@@ -223,6 +241,10 @@ export class WhiteDyeFluidSimulation {
     })
     this.uniformBuffer = device.createBuffer({
       size: PARAM_BYTE_LENGTH,
+      usage: GPU_BUFFER_USAGE_FLAGS.uniform | GPU_BUFFER_USAGE_FLAGS.copyDst,
+    })
+    this.gridUniformBuffer = device.createBuffer({
+      size: GRID_PARAM_BYTE_LENGTH,
       usage: GPU_BUFFER_USAGE_FLAGS.uniform | GPU_BUFFER_USAGE_FLAGS.copyDst,
     })
     this.pipelines = createFluidPipelines(device)
@@ -327,9 +349,10 @@ export class WhiteDyeFluidSimulation {
     this.runDyeAdvection()
   }
 
-  render(targetView: GPUTextureView, format: GPUTextureFormat): void {
+  render(targetView: GPUTextureView, format: GPUTextureFormat, options: WhiteDyeFluidRenderOptions = {}): void {
     const textures = this.getTextures()
     const pipeline = this.getRenderPipeline(format)
+    const gridPipeline = options.grid ? this.getGridRenderPipeline(format) : null
     const bindGroup = this.device.createBindGroup({
       layout: pipeline.getBindGroupLayout(0),
       entries: [
@@ -352,6 +375,16 @@ export class WhiteDyeFluidSimulation {
     pass.setPipeline(pipeline)
     pass.setBindGroup(0, bindGroup)
     pass.draw(3)
+
+    if (options.grid && gridPipeline) {
+      const gridBindGroup = this.createGridBindGroup(gridPipeline, options.grid)
+      if (gridBindGroup) {
+        pass.setPipeline(gridPipeline)
+        pass.setBindGroup(0, gridBindGroup)
+        pass.draw(3)
+      }
+    }
+
     pass.end()
     this.device.queue.submit([encoder.finish()])
   }
@@ -359,6 +392,7 @@ export class WhiteDyeFluidSimulation {
   destroy(): void {
     this.destroyTextures()
     this.uniformBuffer.destroy()
+    this.gridUniformBuffer.destroy()
   }
 
   private applyPendingSplats(dt: number): void {
@@ -589,6 +623,81 @@ export class WhiteDyeFluidSimulation {
     })
 
     return this.renderPipeline
+  }
+
+  private getGridRenderPipeline(format: GPUTextureFormat): GPURenderPipeline {
+    if (this.gridRenderPipeline && this.gridRenderPipelineFormat === format) return this.gridRenderPipeline
+
+    this.gridRenderPipelineFormat = format
+    this.gridRenderPipeline = this.device.createRenderPipeline({
+      label: 'webgpu-fluid-grid-overlay-pipeline',
+      layout: 'auto',
+      vertex: {
+        module: this.device.createShaderModule({
+          label: 'webgpu-fluid-grid-overlay-vertex',
+          code: GRID_OVERLAY_SHADER,
+        }),
+        entryPoint: 'vertexMain',
+      },
+      fragment: {
+        module: this.device.createShaderModule({
+          label: 'webgpu-fluid-grid-overlay-fragment',
+          code: GRID_OVERLAY_SHADER,
+        }),
+        entryPoint: 'fragmentMain',
+        targets: [
+          {
+            format,
+            blend: {
+              color: {
+                srcFactor: 'src-alpha',
+                dstFactor: 'one-minus-src-alpha',
+                operation: 'add',
+              },
+              alpha: {
+                srcFactor: 'one',
+                dstFactor: 'one-minus-src-alpha',
+                operation: 'add',
+              },
+            },
+          },
+        ],
+      },
+      primitive: {
+        topology: 'triangle-list',
+      },
+    })
+
+    return this.gridRenderPipeline
+  }
+
+  private createGridBindGroup(pipeline: GPURenderPipeline, options: GridOverlayOptions): GPUBindGroup | null {
+    const layout = resolveGridLayout(this.viewport, options.cellSizePx)
+    if (layout.columns <= 0 || layout.rows <= 0) return null
+
+    const lineWidth = clampFinite(options.lineWidthPx ?? 1, 0.25, Math.max(0.25, layout.cellSizePx / 2))
+    const opacity = clampFinite(options.opacity ?? 0.5, 0, 1)
+    if (opacity <= 0) return null
+
+    this.gridParams[0] = this.viewport.width
+    this.gridParams[1] = this.viewport.height
+    this.gridParams[2] = 1 / this.viewport.width
+    this.gridParams[3] = 1 / this.viewport.height
+    this.gridParams[4] = layout.cellSizePx
+    this.gridParams[5] = layout.columns
+    this.gridParams[6] = layout.rows
+    this.gridParams[7] = lineWidth
+    this.gridParams[8] = layout.marginX
+    this.gridParams[9] = layout.marginY
+    this.gridParams[10] = opacity
+    this.gridParams[11] = 0
+
+    this.device.queue.writeBuffer(this.gridUniformBuffer, 0, this.gridParams)
+
+    return this.device.createBindGroup({
+      layout: pipeline.getBindGroupLayout(0),
+      entries: [{ binding: 0, resource: { buffer: this.gridUniformBuffer } }],
+    })
   }
 
   private destroyTextures(): void {
@@ -894,6 +1003,61 @@ ${COMPUTE_MAIN_PREFIX}
   let velocity = textureSampleLevel(sourceA, linearSampler, uv, 0.0).xy;
   let updated = maxVelocityClamp(velocity - gradient);
   storeValue(id, vec4f(updated, 0.0, 1.0));
+}
+`
+
+const GRID_OVERLAY_SHADER = `
+struct GridParams {
+  viewport: vec4f,
+  metrics: vec4f,
+  offset: vec4f,
+}
+
+struct VertexOut {
+  @builtin(position) position: vec4f,
+  @location(0) screenUv: vec2f,
+}
+
+@group(0) @binding(0) var<uniform> grid: GridParams;
+
+@vertex
+fn vertexMain(@builtin(vertex_index) vertexIndex: u32) -> VertexOut {
+  var positions = array<vec2f, 3>(
+    vec2f(-1.0, -1.0),
+    vec2f(3.0, -1.0),
+    vec2f(-1.0, 3.0),
+  );
+  let clip = positions[vertexIndex];
+  var output: VertexOut;
+  output.position = vec4f(clip, 0.0, 1.0);
+  output.screenUv = clip * 0.5 + vec2f(0.5);
+  return output;
+}
+
+@fragment
+fn fragmentMain(input: VertexOut) -> @location(0) vec4f {
+  let cellSize = grid.metrics.x;
+  let columns = grid.metrics.y;
+  let rows = grid.metrics.z;
+  let gridSize = vec2f(columns, rows) * cellSize;
+  let pixel = input.screenUv * grid.viewport.xy;
+  let local = pixel - grid.offset.xy;
+  let inside = local.x >= 0.0 && local.y >= 0.0 && local.x <= gridSize.x && local.y <= gridSize.y;
+
+  if (!inside || columns < 1.0 || rows < 1.0) {
+    return vec4f(0.0);
+  }
+
+  let cell = local / cellSize;
+  let wrapped = fract(cell);
+  let distanceToLine = min(
+    min(wrapped.x, 1.0 - wrapped.x),
+    min(wrapped.y, 1.0 - wrapped.y),
+  ) * cellSize;
+  let halfLineWidth = max(grid.metrics.w * 0.5, 0.125);
+  let alpha = (1.0 - smoothstep(halfLineWidth, halfLineWidth + 1.0, distanceToLine)) * grid.offset.z;
+
+  return vec4f(0.15, 0.82, 1.0, alpha);
 }
 `
 
