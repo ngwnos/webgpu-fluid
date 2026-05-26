@@ -13,6 +13,7 @@ import {
   type GridCell,
   type GridPaintAction,
 } from './gridLayout'
+import { createPointerSplatOptions, type NormalizedPointerPoint } from './pointerSplat'
 
 const MAX_DEVICE_PIXEL_RATIO = 2
 const GRID_CELL_SIZE_CSS_PX = 40
@@ -66,6 +67,7 @@ async function start(canvas: HTMLCanvasElement, statusElement: HTMLElement): Pro
   let gridSelection = new GridSelection(0, 0)
   let activePaint: GridPaintAction | null = null
   let lastPaintCell: GridCell | null = null
+  let lastFluidPointer: NormalizedPointerPoint | null = null
 
   const gridCellSizePx = () => GRID_CELL_SIZE_CSS_PX * renderPixelRatio
 
@@ -129,6 +131,20 @@ async function start(canvas: HTMLCanvasElement, statusElement: HTMLElement): Pro
     })
   }
 
+  const getFluidPointer = (event: PointerEvent): NormalizedPointerPoint => {
+    const rect = canvas.getBoundingClientRect()
+    return {
+      x: clamp01((event.clientX - rect.left) / Math.max(1, rect.width)),
+      y: clamp01((event.clientY - rect.top) / Math.max(1, rect.height)),
+    }
+  }
+
+  const addFluidSplat = (event: PointerEvent, prime = false) => {
+    const point = getFluidPointer(event)
+    simulation.addSplat(createPointerSplatOptions(point, lastFluidPointer, prime))
+    lastFluidPointer = point
+  }
+
   const paintToCell = (cell: GridCell) => {
     if (!activePaint) return
 
@@ -141,6 +157,7 @@ async function start(canvas: HTMLCanvasElement, statusElement: HTMLElement): Pro
 
   const beginPaint = (event: PointerEvent) => {
     canvas.setPointerCapture(event.pointerId)
+    addFluidSplat(event, true)
     const cell = getGridCell(event)
     activePaint = null
     lastPaintCell = null
@@ -151,6 +168,7 @@ async function start(canvas: HTMLCanvasElement, statusElement: HTMLElement): Pro
   }
 
   const continuePaint = (event: PointerEvent) => {
+    addFluidSplat(event)
     const cell = activePaint ? getGridCell(event) : null
     if (cell) paintToCell(cell)
   }
@@ -158,6 +176,7 @@ async function start(canvas: HTMLCanvasElement, statusElement: HTMLElement): Pro
   const clearPaint = () => {
     activePaint = null
     lastPaintCell = null
+    lastFluidPointer = null
   }
 
   canvas.addEventListener('pointerdown', beginPaint)
@@ -179,4 +198,8 @@ async function start(canvas: HTMLCanvasElement, statusElement: HTMLElement): Pro
 function writeStatus(element: HTMLElement, state: RuntimeStatus, message: string): void {
   element.dataset.state = state
   element.textContent = message
+}
+
+function clamp01(value: number): number {
+  return Math.min(Math.max(value, 0), 1)
 }
