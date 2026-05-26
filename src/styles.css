@@ -10,12 +10,80 @@ body {
 body {
   position: fixed;
   inset: 0;
+  display: flex;
+  flex-direction: column;
+  color: #d7e3e6;
 }
 
-canvas {
+#menu {
+  flex: 0 0 auto;
+  min-height: 36px;
+  border-bottom: 1px solid rgba(49, 120, 132, 0.7);
+  background: #070d0f;
+}
+
+.app-menubar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 36px;
+  padding: 0 8px;
+  font: 13px/1.2 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.app-menubar__trigger {
+  height: 28px;
+  padding: 0 10px;
+  color: #d7e3e6;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  font: inherit;
+}
+
+.app-menubar__trigger[data-highlighted],
+.app-menubar__trigger[data-state='open'] {
+  color: #ffffff;
+  background: rgba(17, 84, 96, 0.72);
+  border-color: rgba(82, 210, 228, 0.48);
+}
+
+.app-menubar__content {
+  z-index: 20;
+  min-width: 176px;
+  padding: 5px;
+  color: #d7e3e6;
+  background: rgba(7, 13, 15, 0.98);
+  border: 1px solid rgba(82, 210, 228, 0.32);
+  border-radius: 6px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.42);
+}
+
+.app-menubar__item {
+  display: flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 8px;
+  border-radius: 4px;
+  color: #d7e3e6;
+  outline: none;
+  font: 13px/1.2 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.app-menubar__item[data-highlighted] {
+  color: #ffffff;
+  background: rgba(17, 84, 96, 0.8);
+}
+
+#viewport {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+#fluid {
   display: block;
-  width: 100vw;
-  height: 100vh;
+  width: 100%;
+  height: 100%;
   background: #000;
   touch-action: none;
 }

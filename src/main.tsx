@@ -1,4 +1,8 @@
 import './styles.css'
+import { createRoot } from 'react-dom/client'
+
+import { AppMenu } from './AppMenu'
+import { resolveCanvasViewport } from './canvasViewport'
 import {
   WHITE_DYE_FLUID_DEFAULTS,
   createWhiteDyeFluidSimulation,
@@ -21,12 +25,14 @@ const GRID_CELL_SIZE_CSS_PX = 40
 type RuntimeStatus = 'unavailable' | 'error'
 
 const canvas = document.querySelector<HTMLCanvasElement>('#fluid')
+const menuElement = document.querySelector<HTMLDivElement>('#menu')
 const statusElement = document.querySelector<HTMLDivElement>('#status')
 
-if (!canvas || !statusElement) {
+if (!canvas || !menuElement || !statusElement) {
   throw new Error('Missing required DOM nodes.')
 }
 
+createRoot(menuElement).render(<AppMenu />)
 void start(canvas, statusElement)
 
 async function start(canvas: HTMLCanvasElement, statusElement: HTMLElement): Promise<void> {
@@ -82,15 +88,19 @@ async function start(canvas: HTMLCanvasElement, statusElement: HTMLElement): Pro
   }
 
   const resize = () => {
-    const pixelRatio = Math.min(window.devicePixelRatio || 1, MAX_DEVICE_PIXEL_RATIO)
-    renderPixelRatio = pixelRatio
-    const width = Math.max(1, Math.round(window.innerWidth * pixelRatio))
-    const height = Math.max(1, Math.round(window.innerHeight * pixelRatio))
+    const viewport = resolveCanvasViewport(
+      {
+        width: canvas.clientWidth,
+        height: canvas.clientHeight,
+      },
+      Math.min(window.devicePixelRatio || 1, MAX_DEVICE_PIXEL_RATIO),
+    )
+    renderPixelRatio = viewport.pixelRatio
 
-    if (canvas.width !== width || canvas.height !== height) {
-      canvas.width = width
-      canvas.height = height
-      simulation.resize(width, height)
+    if (canvas.width !== viewport.width || canvas.height !== viewport.height) {
+      canvas.width = viewport.width
+      canvas.height = viewport.height
+      simulation.resize(viewport.width, viewport.height)
     }
 
     context.configure({
@@ -185,10 +195,13 @@ async function start(canvas: HTMLCanvasElement, statusElement: HTMLElement): Pro
   canvas.addEventListener('pointerleave', clearPaint)
   canvas.addEventListener('pointercancel', clearPaint)
   window.addEventListener('resize', resize)
+  const resizeObserver = new ResizeObserver(resize)
+  resizeObserver.observe(canvas)
   resize()
   animationFrame = requestAnimationFrame(frame)
 
   window.addEventListener('pagehide', () => {
+    resizeObserver.disconnect()
     cancelAnimationFrame(animationFrame)
     simulation.destroy()
     device.destroy()
