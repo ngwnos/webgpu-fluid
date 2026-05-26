@@ -17,6 +17,8 @@
     "vite": "^8.0.10"
   },
   "dependencies": {
+    "@radix-ui/react-collapsible": "^1.1.12",
+    "@radix-ui/react-dialog": "^1.1.15",
     "@radix-ui/react-menubar": "^1.1.16",
     "react": "^19.2.6",
     "react-dom": "^19.2.6"

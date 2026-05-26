@@ -75,6 +75,118 @@ body {
   background: rgba(17, 84, 96, 0.8);
 }
 
+.floating-window {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 15;
+  width: min(320px, calc(100vw - 24px));
+  color: #d7e3e6;
+  background: rgba(7, 13, 15, 0.94);
+  border: 1px solid rgba(82, 210, 228, 0.4);
+  border-radius: 6px;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.46);
+  overflow: hidden;
+  user-select: none;
+}
+
+.floating-window__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 34px;
+  padding: 0 6px 0 10px;
+  background: rgba(17, 84, 96, 0.42);
+  border-bottom: 1px solid rgba(82, 210, 228, 0.24);
+  cursor: move;
+  touch-action: none;
+}
+
+.floating-window__title {
+  margin: 0;
+  font: 600 13px/1.2 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.floating-window__controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.floating-window__button {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  color: #d7e3e6;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  font: 14px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  cursor: pointer;
+}
+
+.floating-window__button:hover,
+.floating-window__button:focus-visible {
+  color: #ffffff;
+  background: rgba(82, 210, 228, 0.18);
+  border-color: rgba(82, 210, 228, 0.36);
+  outline: none;
+}
+
+.floating-window__body {
+  padding: 12px;
+}
+
+.cell-window {
+  display: grid;
+  gap: 12px;
+  font: 12px/1.3 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.cell-window__field {
+  display: grid;
+  gap: 6px;
+}
+
+.cell-window__field span,
+.cell-window__check span {
+  color: #a9bdc2;
+}
+
+.cell-window__field input,
+.cell-window__field select {
+  width: 100%;
+}
+
+.cell-window__field select {
+  height: 28px;
+  color: #d7e3e6;
+  background: #0b171a;
+  border: 1px solid rgba(82, 210, 228, 0.32);
+  border-radius: 4px;
+}
+
+.cell-window__check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cell-window__action {
+  height: 30px;
+  color: #ffffff;
+  background: rgba(120, 26, 22, 0.82);
+  border: 1px solid rgba(255, 80, 68, 0.4);
+  border-radius: 4px;
+  font: inherit;
+}
+
+.cell-window__action:hover,
+.cell-window__action:focus-visible {
+  background: rgba(152, 34, 28, 0.92);
+  outline: none;
+}
+
 #viewport {
   flex: 1 1 auto;
   min-height: 0;
