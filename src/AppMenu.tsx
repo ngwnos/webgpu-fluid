@@ -3,8 +3,22 @@ import { useState } from 'react'
 
 import { FloatingWindow } from './FloatingWindow'
 
+export const VIEW_FLOATING_WINDOWS = [
+  { id: 'cell', title: 'Cell', defaultPosition: { x: 20, y: 56 } },
+  { id: 'cursor', title: 'Cursor', defaultPosition: { x: 356, y: 56 } },
+] as const
+
 export function AppMenu(): React.JSX.Element {
   const [cellWindowOpen, setCellWindowOpen] = useState(false)
+  const [cursorWindowOpen, setCursorWindowOpen] = useState(false)
+
+  const openViewWindow = (id: (typeof VIEW_FLOATING_WINDOWS)[number]['id']) => {
+    if (id === 'cell') {
+      setCellWindowOpen(true)
+      return
+    }
+    setCursorWindowOpen(true)
+  }
 
   return (
     <>
@@ -13,9 +27,15 @@ export function AppMenu(): React.JSX.Element {
           <Menubar.Trigger className="app-menubar__trigger">View</Menubar.Trigger>
           <Menubar.Portal>
             <Menubar.Content className="app-menubar__content" align="start" sideOffset={6}>
-              <Menubar.Item className="app-menubar__item" onSelect={() => setCellWindowOpen(true)}>
-                Cell
-              </Menubar.Item>
+              {VIEW_FLOATING_WINDOWS.map((window) => (
+                <Menubar.Item
+                  className="app-menubar__item"
+                  key={window.id}
+                  onSelect={() => openViewWindow(window.id)}
+                >
+                  {window.title}
+                </Menubar.Item>
+              ))}
             </Menubar.Content>
           </Menubar.Portal>
         </Menubar.Menu>
@@ -55,7 +75,7 @@ export function AppMenu(): React.JSX.Element {
         title="Cell"
         open={cellWindowOpen}
         onOpenChange={setCellWindowOpen}
-        defaultPosition={{ x: 20, y: 56 }}
+        defaultPosition={VIEW_FLOATING_WINDOWS[0].defaultPosition}
       >
         <div className="cell-window">
           <label className="cell-window__field">
@@ -78,6 +98,15 @@ export function AppMenu(): React.JSX.Element {
             Clear active cells
           </button>
         </div>
+      </FloatingWindow>
+
+      <FloatingWindow
+        title="Cursor"
+        open={cursorWindowOpen}
+        onOpenChange={setCursorWindowOpen}
+        defaultPosition={VIEW_FLOATING_WINDOWS[1].defaultPosition}
+      >
+        <div className="cursor-window" />
       </FloatingWindow>
     </>
   )
