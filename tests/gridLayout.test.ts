@@ -1,6 +1,13 @@
 import { describe, expect, test } from 'bun:test'
 
-import { resolveGridLayout } from '../src/gridLayout'
+import {
+  GridSelection,
+  beginGridPaint,
+  paintGridCell,
+  resolveGridCell,
+  resolveGridCellSegment,
+  resolveGridLayout,
+} from '../src/gridLayout'
 
 describe('resolveGridLayout', () => {
   test('fits only complete square cells and centers leftover margin', () => {
@@ -25,5 +32,47 @@ describe('resolveGridLayout', () => {
       marginX: 0,
       marginY: 0,
     })
+  })
+
+  test('resolves pixel coordinates to cells inside the centered grid', () => {
+    const layout = resolveGridLayout({ width: 103, height: 74 }, 20)
+
+    expect(resolveGridCell(layout, { x: 1.49, y: 20 })).toBeNull()
+    expect(resolveGridCell(layout, { x: 1.5, y: 7 })).toEqual({ column: 0, row: 0 })
+    expect(resolveGridCell(layout, { x: 101.49, y: 66.99 })).toEqual({ column: 4, row: 2 })
+    expect(resolveGridCell(layout, { x: 101.5, y: 67 })).toBeNull()
+  })
+})
+
+describe('GridSelection painting', () => {
+  test('paints cells on when the first clicked cell is off', () => {
+    const selection = new GridSelection(4, 3)
+    const paint = beginGridPaint(selection, { column: 1, row: 1 })
+
+    paintGridCell(selection, paint, { column: 2, row: 1 })
+
+    expect(selection.has({ column: 1, row: 1 })).toBe(true)
+    expect(selection.has({ column: 2, row: 1 })).toBe(true)
+  })
+
+  test('paints cells off when the first clicked cell is on', () => {
+    const selection = new GridSelection(4, 3)
+    selection.set({ column: 1, row: 1 }, true)
+    selection.set({ column: 2, row: 1 }, true)
+    const paint = beginGridPaint(selection, { column: 1, row: 1 })
+
+    paintGridCell(selection, paint, { column: 2, row: 1 })
+
+    expect(selection.has({ column: 1, row: 1 })).toBe(false)
+    expect(selection.has({ column: 2, row: 1 })).toBe(false)
+  })
+
+  test('resolves skipped cells along a drag segment', () => {
+    expect(resolveGridCellSegment({ column: 0, row: 1 }, { column: 3, row: 1 })).toEqual([
+      { column: 0, row: 1 },
+      { column: 1, row: 1 },
+      { column: 2, row: 1 },
+      { column: 3, row: 1 },
+    ])
   })
 })

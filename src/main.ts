@@ -3,6 +3,16 @@ import {
   WHITE_DYE_FLUID_DEFAULTS,
   createWhiteDyeFluidSimulation,
 } from './fluid'
+import {
+  GridSelection,
+  beginGridPaint,
+  paintGridCell,
+  resolveGridCell,
+  resolveGridCellSegment,
+  resolveGridLayout,
+  type GridCell,
+  type GridPaintAction,
+} from './gridLayout'
 
 const MAX_DEVICE_PIXEL_RATIO = 2
 const GRID_CELL_SIZE_CSS_PX = 40
@@ -52,8 +62,22 @@ async function start(canvas: HTMLCanvasElement, statusElement: HTMLElement): Pro
 
   let lastFrameTime = performance.now()
   let animationFrame = 0
-  let lastPointer: { x: number; y: number } | null = null
   let renderPixelRatio = 1
+  let gridSelection = new GridSelection(0, 0)
+  let activePaint: GridPaintAction | null = null
+  let lastPaintCell: GridCell | null = null
+
+  const gridCellSizePx = () => GRID_CELL_SIZE_CSS_PX * renderPixelRatio
+
+  const syncGridSelection = () => {
+    const layout = resolveGridLayout({ width: canvas.width, height: canvas.height }, gridCellSizePx())
+    if (gridSelection.columns !== layout.columns || gridSelection.rows !== layout.rows) {
+      gridSelection = new GridSelection(layout.columns, layout.rows)
+      activePaint = null
+      lastPaintCell = null
+    }
+    return layout
+  }
 
   const resize = () => {
     const pixelRatio = Math.min(window.devicePixelRatio || 1, MAX_DEVICE_PIXEL_RATIO)
@@ -72,6 +96,7 @@ async function start(canvas: HTMLCanvasElement, statusElement: HTMLElement): Pro
       format,
       alphaMode: 'opaque',
     })
+    syncGridSelection()
   }
 
   const frame = (time: number) => {
@@ -81,45 +106,65 @@ async function start(canvas: HTMLCanvasElement, statusElement: HTMLElement): Pro
     simulation.step(dt)
     simulation.render(context.getCurrentTexture().createView(), format, {
       grid: {
-        cellSizePx: GRID_CELL_SIZE_CSS_PX * renderPixelRatio,
+        cellSizePx: gridCellSizePx(),
         lineWidthPx: renderPixelRatio,
         opacity: 0.48,
+        activeCells: {
+          columns: gridSelection.columns,
+          rows: gridSelection.rows,
+          data: gridSelection.toMaskWords(),
+          version: gridSelection.version,
+        },
       },
     })
     animationFrame = requestAnimationFrame(frame)
   }
 
-  const addPointerSplat = (event: PointerEvent, prime = false) => {
+  const getGridCell = (event: PointerEvent): GridCell | null => {
     const rect = canvas.getBoundingClientRect()
-    const x = clamp01((event.clientX - rect.left) / Math.max(1, rect.width))
-    const y = clamp01((event.clientY - rect.top) / Math.max(1, rect.height))
-    const previous = lastPointer
-
-    simulation.addSplat({
-      x,
-      y,
-      strength: prime || !previous ? 0.65 : 0.9,
-      velocityX: previous ? previous.x - x : 0,
-      velocityY: previous ? previous.y - y : 0,
-      segmentScale: 0.45,
-      radiusScale: prime ? 1.45 : 1,
-      ...(previous ? { lastX: previous.x, lastY: previous.y } : {}),
+    const layout = syncGridSelection()
+    return resolveGridCell(layout, {
+      x: ((event.clientX - rect.left) / Math.max(1, rect.width)) * canvas.width,
+      y: ((event.clientY - rect.top) / Math.max(1, rect.height)) * canvas.height,
     })
-    lastPointer = { x, y }
   }
 
-  const clearPointer = () => {
-    lastPointer = null
+  const paintToCell = (cell: GridCell) => {
+    if (!activePaint) return
+
+    const cells = lastPaintCell ? resolveGridCellSegment(lastPaintCell, cell) : [cell]
+    for (const nextCell of cells) {
+      paintGridCell(gridSelection, activePaint, nextCell)
+    }
+    lastPaintCell = cell
   }
 
-  canvas.addEventListener('pointerdown', (event) => {
+  const beginPaint = (event: PointerEvent) => {
     canvas.setPointerCapture(event.pointerId)
-    addPointerSplat(event, true)
-  })
-  canvas.addEventListener('pointermove', addPointerSplat)
-  canvas.addEventListener('pointerup', clearPointer)
-  canvas.addEventListener('pointerleave', clearPointer)
-  canvas.addEventListener('pointercancel', clearPointer)
+    const cell = getGridCell(event)
+    activePaint = null
+    lastPaintCell = null
+    if (!cell) return
+
+    activePaint = beginGridPaint(gridSelection, cell)
+    lastPaintCell = cell
+  }
+
+  const continuePaint = (event: PointerEvent) => {
+    const cell = activePaint ? getGridCell(event) : null
+    if (cell) paintToCell(cell)
+  }
+
+  const clearPaint = () => {
+    activePaint = null
+    lastPaintCell = null
+  }
+
+  canvas.addEventListener('pointerdown', beginPaint)
+  canvas.addEventListener('pointermove', continuePaint)
+  canvas.addEventListener('pointerup', clearPaint)
+  canvas.addEventListener('pointerleave', clearPaint)
+  canvas.addEventListener('pointercancel', clearPaint)
   window.addEventListener('resize', resize)
   resize()
   animationFrame = requestAnimationFrame(frame)
@@ -134,8 +179,4 @@ async function start(canvas: HTMLCanvasElement, statusElement: HTMLElement): Pro
 function writeStatus(element: HTMLElement, state: RuntimeStatus, message: string): void {
   element.dataset.state = state
   element.textContent = message
-}
-
-function clamp01(value: number): number {
-  return Math.min(Math.max(value, 0), 1)
 }

@@ -2,6 +2,7 @@ import { resolveGridLayout } from './gridLayout'
 
 const GPU_BUFFER_USAGE_FLAGS = {
   copyDst: 0x0008,
+  storage: 0x0080,
   uniform: 0x0040,
 } as const
 
@@ -41,6 +42,14 @@ export type GridOverlayOptions = {
   readonly cellSizePx: number
   readonly lineWidthPx?: number
   readonly opacity?: number
+  readonly activeCells?: GridOverlayMask
+}
+
+export type GridOverlayMask = {
+  readonly columns: number
+  readonly rows: number
+  readonly data: Uint32Array
+  readonly version: number
 }
 
 export type WhiteDyeFluidRenderOptions = {
@@ -215,6 +224,8 @@ export class WhiteDyeFluidSimulation {
   private readonly sampler: GPUSampler
   private readonly uniformBuffer: GPUBuffer
   private readonly gridUniformBuffer: GPUBuffer
+  private gridMaskBuffer: GPUBuffer | null = null
+  private gridMaskCapacity = 0
   private readonly params = new Float32Array(PARAM_FLOAT_COUNT)
   private readonly gridParams = new Float32Array(GRID_PARAM_FLOAT_COUNT)
   private readonly pendingSplats: WhiteDyeFluidSplatEvent[] = []
@@ -391,6 +402,7 @@ export class WhiteDyeFluidSimulation {
 
   destroy(): void {
     this.destroyTextures()
+    this.destroyGridMaskBuffer()
     this.uniformBuffer.destroy()
     this.gridUniformBuffer.destroy()
   }
@@ -694,10 +706,51 @@ export class WhiteDyeFluidSimulation {
 
     this.device.queue.writeBuffer(this.gridUniformBuffer, 0, this.gridParams)
 
+    const mask = this.writeGridMaskBuffer(layout.columns * layout.rows, options.activeCells)
+
     return this.device.createBindGroup({
       layout: pipeline.getBindGroupLayout(0),
-      entries: [{ binding: 0, resource: { buffer: this.gridUniformBuffer } }],
+      entries: [
+        { binding: 0, resource: { buffer: this.gridUniformBuffer } },
+        { binding: 1, resource: { buffer: mask.buffer, size: mask.byteLength } },
+      ],
     })
+  }
+
+  private writeGridMaskBuffer(
+    cellCount: number,
+    activeCells?: GridOverlayMask,
+  ): { readonly buffer: GPUBuffer; readonly byteLength: number } {
+    const wordsLength = Math.max(1, cellCount)
+    const byteLength = wordsLength * Uint32Array.BYTES_PER_ELEMENT
+
+    if (!this.gridMaskBuffer || this.gridMaskCapacity < wordsLength) {
+      this.destroyGridMaskBuffer()
+      this.gridMaskBuffer = this.device.createBuffer({
+        label: 'webgpu-fluid-grid-overlay-mask',
+        size: byteLength,
+        usage: GPU_BUFFER_USAGE_FLAGS.storage | GPU_BUFFER_USAGE_FLAGS.copyDst,
+      })
+      this.gridMaskCapacity = wordsLength
+    }
+
+    const words = new Uint32Array(wordsLength)
+    if (
+      activeCells &&
+      activeCells.columns * activeCells.rows === cellCount &&
+      activeCells.data.length >= cellCount
+    ) {
+      words.set(activeCells.data.subarray(0, cellCount))
+    }
+    this.device.queue.writeBuffer(this.gridMaskBuffer, 0, words)
+
+    return { buffer: this.gridMaskBuffer, byteLength }
+  }
+
+  private destroyGridMaskBuffer(): void {
+    this.gridMaskBuffer?.destroy()
+    this.gridMaskBuffer = null
+    this.gridMaskCapacity = 0
   }
 
   private destroyTextures(): void {
@@ -1019,6 +1072,7 @@ struct VertexOut {
 }
 
 @group(0) @binding(0) var<uniform> grid: GridParams;
+@group(0) @binding(1) var<storage, read> activeCells: array<u32>;
 
 @vertex
 fn vertexMain(@builtin(vertex_index) vertexIndex: u32) -> VertexOut {
@@ -1030,7 +1084,7 @@ fn vertexMain(@builtin(vertex_index) vertexIndex: u32) -> VertexOut {
   let clip = positions[vertexIndex];
   var output: VertexOut;
   output.position = vec4f(clip, 0.0, 1.0);
-  output.screenUv = clip * 0.5 + vec2f(0.5);
+  output.screenUv = vec2f(clip.x * 0.5 + 0.5, 0.5 - clip.y * 0.5);
   return output;
 }
 
@@ -1042,22 +1096,31 @@ fn fragmentMain(input: VertexOut) -> @location(0) vec4f {
   let gridSize = vec2f(columns, rows) * cellSize;
   let pixel = input.screenUv * grid.viewport.xy;
   let local = pixel - grid.offset.xy;
-  let inside = local.x >= 0.0 && local.y >= 0.0 && local.x <= gridSize.x && local.y <= gridSize.y;
+  let inside = local.x >= 0.0 && local.y >= 0.0 && local.x < gridSize.x && local.y < gridSize.y;
 
   if (!inside || columns < 1.0 || rows < 1.0) {
     return vec4f(0.0);
   }
 
   let cell = local / cellSize;
+  let cellIndex = vec2u(floor(cell));
+  let maskIndex = cellIndex.y * u32(columns) + cellIndex.x;
+  let isActive = activeCells[maskIndex] != 0u;
   let wrapped = fract(cell);
   let distanceToLine = min(
     min(wrapped.x, 1.0 - wrapped.x),
     min(wrapped.y, 1.0 - wrapped.y),
   ) * cellSize;
   let halfLineWidth = max(grid.metrics.w * 0.5, 0.125);
-  let alpha = (1.0 - smoothstep(halfLineWidth, halfLineWidth + 1.0, distanceToLine)) * grid.offset.z;
+  let lineAlpha = (1.0 - smoothstep(halfLineWidth, halfLineWidth + 1.0, distanceToLine)) * grid.offset.z;
+  let fillAlpha = select(0.0, 0.42, isActive);
+  let alpha = fillAlpha + lineAlpha * (1.0 - fillAlpha);
+  let color = (
+    vec3f(1.0, 0.04, 0.02) * fillAlpha +
+    vec3f(0.15, 0.82, 1.0) * lineAlpha * (1.0 - fillAlpha)
+  ) / max(alpha, 0.0001);
 
-  return vec4f(0.15, 0.82, 1.0, alpha);
+  return vec4f(color, alpha);
 }
 `
 
