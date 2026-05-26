@@ -34,6 +34,13 @@ export type WhiteDyeFluidOptions = {
   readonly splatRadius?: number
   readonly splatForce?: number
   readonly maxVelocity?: number
+  readonly emitterForce?: number
+  readonly emitterRadiusCells?: number
+  readonly emitterDyeRate?: number
+  readonly sinkForce?: number
+  readonly sinkRadiusCells?: number
+  readonly sinkAbsorption?: number
+  readonly sinkVelocityDamping?: number
 }
 
 export type WhiteDyeFluidResolvedOptions = Required<WhiteDyeFluidOptions>
@@ -123,9 +130,16 @@ export const WHITE_DYE_FLUID_DEFAULTS = {
   splatRadius: 0.035,
   splatForce: 4200,
   maxVelocity: 240,
+  emitterForce: 3400,
+  emitterRadiusCells: 1.7,
+  emitterDyeRate: 11,
+  sinkForce: 4600,
+  sinkRadiusCells: 2.8,
+  sinkAbsorption: 14,
+  sinkVelocityDamping: 1.4,
 } as const satisfies WhiteDyeFluidResolvedOptions
 
-const PARAM_FLOAT_COUNT = 36
+const PARAM_FLOAT_COUNT = 44
 const PARAM_BYTE_LENGTH = PARAM_FLOAT_COUNT * Float32Array.BYTES_PER_ELEMENT
 const GRID_PARAM_FLOAT_COUNT = 12
 const GRID_PARAM_BYTE_LENGTH = GRID_PARAM_FLOAT_COUNT * Float32Array.BYTES_PER_ELEMENT
@@ -152,6 +166,21 @@ export function resolveFluidOptions(options: WhiteDyeFluidOptions = {}): WhiteDy
     splatRadius: clampFinite(options.splatRadius ?? WHITE_DYE_FLUID_DEFAULTS.splatRadius, 0.001, 0.4),
     splatForce: clampFinite(options.splatForce ?? WHITE_DYE_FLUID_DEFAULTS.splatForce, 0, 12000),
     maxVelocity: clampFinite(options.maxVelocity ?? WHITE_DYE_FLUID_DEFAULTS.maxVelocity, 1, 2000),
+    emitterForce: clampFinite(options.emitterForce ?? WHITE_DYE_FLUID_DEFAULTS.emitterForce, 0, 12000),
+    emitterRadiusCells: clampFinite(
+      options.emitterRadiusCells ?? WHITE_DYE_FLUID_DEFAULTS.emitterRadiusCells,
+      0.5,
+      3.5,
+    ),
+    emitterDyeRate: clampFinite(options.emitterDyeRate ?? WHITE_DYE_FLUID_DEFAULTS.emitterDyeRate, 0, 60),
+    sinkForce: clampFinite(options.sinkForce ?? WHITE_DYE_FLUID_DEFAULTS.sinkForce, 0, 14000),
+    sinkRadiusCells: clampFinite(options.sinkRadiusCells ?? WHITE_DYE_FLUID_DEFAULTS.sinkRadiusCells, 0.5, 3.5),
+    sinkAbsorption: clampFinite(options.sinkAbsorption ?? WHITE_DYE_FLUID_DEFAULTS.sinkAbsorption, 0, 60),
+    sinkVelocityDamping: clampFinite(
+      options.sinkVelocityDamping ?? WHITE_DYE_FLUID_DEFAULTS.sinkVelocityDamping,
+      0,
+      30,
+    ),
   }
 }
 
@@ -656,6 +685,14 @@ export class WhiteDyeFluidSimulation {
     this.params[33] = this.obstacleMask?.marginY ?? 0
     this.params[34] = 0
     this.params[35] = 0
+    this.params[36] = this.options.emitterForce
+    this.params[37] = this.options.sinkForce
+    this.params[38] = this.options.emitterRadiusCells
+    this.params[39] = this.options.sinkRadiusCells
+    this.params[40] = this.options.emitterDyeRate
+    this.params[41] = this.options.sinkAbsorption
+    this.params[42] = this.options.sinkVelocityDamping
+    this.params[43] = 0
 
     this.device.queue.writeBuffer(this.uniformBuffer, 0, this.params)
   }
@@ -987,6 +1024,8 @@ struct FluidParams {
   viewport: vec4f,
   obstacle: vec4f,
   obstacleOffset: vec4f,
+  blockFlow: vec4f,
+  blockDye: vec4f,
 }
 
 @group(0) @binding(0) var sourceA: texture_2d<f32>;
@@ -1039,21 +1078,74 @@ fn blockAtUv(uv: vec2f) -> u32 {
   return obstacleCells[maskIndex];
 }
 
-fn solidAtUv(uv: vec2f) -> bool {
-  return blockAtUv(uv) == 1u;
-}
-
-fn emitterAtUv(uv: vec2f) -> bool {
-  return blockAtUv(uv) == 2u;
-}
-
-fn sinkAtUv(uv: vec2f) -> bool {
-  return blockAtUv(uv) == 3u;
+fn wallAtUv(uv: vec2f) -> bool {
+  let block = blockAtUv(uv);
+  return block == 1u || block == 2u;
 }
 
 fn fluidClearedAtUv(uv: vec2f) -> bool {
-  let block = blockAtUv(uv);
-  return block == 1u || block == 3u;
+  return blockAtUv(uv) != 0u;
+}
+
+fn blockEffectAtUv(uv: vec2f) -> vec4f {
+  if (!obstacleEnabled()) {
+    return vec4f(0.0);
+  }
+
+  let cellSize = params.obstacle.x;
+  let columns = i32(params.obstacle.y);
+  let rows = i32(params.obstacle.z);
+  let gridSize = vec2f(params.obstacle.y, params.obstacle.z) * cellSize;
+  let pixel = uv * params.viewport.xy;
+  let local = pixel - params.obstacleOffset.xy;
+
+  if (local.x < 0.0 || local.y < 0.0 || local.x >= gridSize.x || local.y >= gridSize.y) {
+    return vec4f(0.0);
+  }
+
+  let baseCell = vec2i(floor(local / cellSize));
+  var force = vec2f(0.0);
+  var emitterFalloff = 0.0;
+  var sinkFalloff = 0.0;
+
+  for (var offsetY = -3; offsetY <= 3; offsetY += 1) {
+    for (var offsetX = -3; offsetX <= 3; offsetX += 1) {
+      let cell = baseCell + vec2i(offsetX, offsetY);
+      if (cell.x < 0 || cell.y < 0 || cell.x >= columns || cell.y >= rows) {
+        continue;
+      }
+
+      let block = obstacleCells[u32(cell.y) * u32(columns) + u32(cell.x)];
+      if (block != 2u && block != 3u) {
+        continue;
+      }
+
+      let centerPixel = params.obstacleOffset.xy + (vec2f(cell) + vec2f(0.5)) * cellSize;
+      let fromCenter = pixel - centerPixel;
+      let distancePx = max(length(fromCenter), 0.0001);
+      let distanceCells = distancePx / cellSize;
+
+      if (block == 2u) {
+        let radius = max(params.blockFlow.z, 0.5);
+        let normalized = clamp((radius - distanceCells) / max(radius - 0.45, 0.001), 0.0, 1.0);
+        let falloff = normalized * normalized * (3.0 - 2.0 * normalized);
+        let direction = fromCenter / distancePx;
+        force += direction * params.blockFlow.x * falloff;
+        emitterFalloff = max(emitterFalloff, falloff);
+      }
+
+      if (block == 3u) {
+        let radius = max(params.blockFlow.w, 0.5);
+        let normalized = clamp((radius - distanceCells) / max(radius - 0.45, 0.001), 0.0, 1.0);
+        let falloff = normalized * normalized * (3.0 - 2.0 * normalized);
+        let direction = -fromCenter / distancePx;
+        force += direction * params.blockFlow.y * falloff;
+        sinkFalloff = max(sinkFalloff, falloff);
+      }
+    }
+  }
+
+  return vec4f(force, emitterFalloff, sinkFalloff);
 }
 
 fn sourceAVelocityBlocked(uv: vec2f) -> vec2f {
@@ -1078,14 +1170,14 @@ fn sourceBScalarBlocked(uv: vec2f) -> f32 {
 }
 
 fn sourceAPressureBoundary(uv: vec2f, centerPressure: f32) -> f32 {
-  if (solidAtUv(uv)) {
+  if (wallAtUv(uv)) {
     return centerPressure;
   }
   return textureSampleLevel(sourceA, linearSampler, uv, 0.0).x;
 }
 
 fn sourceBPressureBoundary(uv: vec2f, centerPressure: f32) -> f32 {
-  if (solidAtUv(uv)) {
+  if (wallAtUv(uv)) {
     return centerPressure;
   }
   return textureSampleLevel(sourceB, linearSampler, uv, 0.0).x;
@@ -1130,10 +1222,6 @@ ${COMPUTE_MAIN_PREFIX}
     storeValue(id, vec4f(0.0, 0.0, 0.0, 1.0));
     return;
   }
-  if (emitterAtUv(uv)) {
-    storeValue(id, vec4f(1.0, 1.0, 1.0, 1.0));
-    return;
-  }
   let diff = uv - params.splat.xy;
   let scaled = vec2f(diff.x * params.splatVelocity.z, diff.y * params.splatVelocity.w);
   let distSq = dot(scaled, scaled);
@@ -1156,7 +1244,9 @@ ${COMPUTE_MAIN_PREFIX}
   let sampleUv = clampToTexel(uv - velocity * params.time.x * params.simSize.zw, params.simSize.zw);
   let sampled = sourceAVelocityBlocked(sampleUv);
   let decay = 1.0 / (1.0 + params.coefficients.x * params.time.x);
-  let updated = maxVelocityClamp(sampled * decay);
+  let blockEffect = blockEffectAtUv(uv);
+  let damping = clamp(blockEffect.w * params.blockDye.z * params.time.x, 0.0, 0.96);
+  let updated = maxVelocityClamp((sampled * decay + blockEffect.xy * params.time.x) * (1.0 - damping));
   storeValue(id, vec4f(updated, 0.0, 1.0));
 }
 `
@@ -1168,10 +1258,6 @@ ${COMPUTE_MAIN_PREFIX}
     storeValue(id, vec4f(0.0, 0.0, 0.0, 1.0));
     return;
   }
-  if (emitterAtUv(uv)) {
-    storeValue(id, vec4f(1.0, 1.0, 1.0, 1.0));
-    return;
-  }
   let velocity = sourceAVelocityBlocked(uv);
   let sampleUv = clampToTexel(uv - velocity * params.time.x * params.simSize.zw, params.dyeSize.zw);
   var sampled = vec3f(0.0);
@@ -1179,7 +1265,10 @@ ${COMPUTE_MAIN_PREFIX}
     sampled = textureSampleLevel(sourceB, linearSampler, sampleUv, 0.0).xyz;
   }
   let decay = 1.0 / (1.0 + params.coefficients.y * params.time.x);
-  let density = clamp(sampled * decay, vec3f(0.0), vec3f(1.0));
+  let blockEffect = blockEffectAtUv(uv);
+  let sinkAbsorption = clamp(blockEffect.w * params.blockDye.y * params.time.x, 0.0, 1.0);
+  let emitted = blockEffect.z * params.blockDye.x * params.time.x;
+  let density = clamp(sampled * decay * (1.0 - sinkAbsorption) + vec3f(emitted), vec3f(0.0), vec3f(1.0));
   storeValue(id, vec4f(density, 1.0));
 }
 `
@@ -1291,16 +1380,16 @@ ${COMPUTE_MAIN_PREFIX}
   let gradient = vec2f(right - left, up - down) * 0.5;
   let velocity = sourceAVelocityBlocked(uv);
   var updated = maxVelocityClamp(velocity - gradient);
-  if (solidAtUv(leftUv)) {
+  if (wallAtUv(leftUv)) {
     updated.x = max(updated.x, 0.0);
   }
-  if (solidAtUv(rightUv)) {
+  if (wallAtUv(rightUv)) {
     updated.x = min(updated.x, 0.0);
   }
-  if (solidAtUv(downUv)) {
+  if (wallAtUv(downUv)) {
     updated.y = max(updated.y, 0.0);
   }
-  if (solidAtUv(upUv)) {
+  if (wallAtUv(upUv)) {
     updated.y = min(updated.y, 0.0);
   }
   storeValue(id, vec4f(updated, 0.0, 1.0));
