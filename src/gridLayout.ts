@@ -23,14 +23,22 @@ export type GridCell = {
   readonly row: number
 }
 
+export type GridBlockType = 'solid' | 'emitter' | 'sink'
+
 export type GridMask = GridLayout & {
   readonly data: Uint32Array
   readonly version: number
 }
 
 export type GridPaintAction = {
-  readonly enabled: boolean
+  readonly block: GridBlockType | null
 }
+
+export const GRID_BLOCK_CODES = {
+  solid: 1,
+  emitter: 2,
+  sink: 3,
+} as const satisfies Record<GridBlockType, number>
 
 export function resolveGridLayout(viewport: GridViewport, cellSizePx: number): GridLayout {
   const width = Math.max(1, Math.round(viewport.width))
@@ -82,7 +90,7 @@ export function createGridMask(viewport: GridViewport, cellSizePx: number, selec
 }
 
 export class GridSelection {
-  private readonly cells = new Set<string>()
+  private readonly cells = new Map<string, GridBlockType>()
   private revision = 0
 
   constructor(
@@ -95,18 +103,22 @@ export class GridSelection {
   }
 
   has(cell: GridCell): boolean {
-    return this.cells.has(this.key(cell))
+    return this.get(cell) !== null
   }
 
-  set(cell: GridCell, enabled: boolean): void {
+  get(cell: GridCell): GridBlockType | null {
+    return this.cells.get(this.key(cell)) ?? null
+  }
+
+  set(cell: GridCell, block: GridBlockType | null): void {
     if (!this.contains(cell)) return
 
     const key = this.key(cell)
-    const alreadyEnabled = this.cells.has(key)
-    if (enabled === alreadyEnabled) return
+    const currentBlock = this.cells.get(key) ?? null
+    if (block === currentBlock) return
 
-    if (enabled) {
-      this.cells.add(key)
+    if (block) {
+      this.cells.set(key, block)
     } else {
       this.cells.delete(key)
     }
@@ -115,12 +127,12 @@ export class GridSelection {
 
   toMaskWords(): Uint32Array {
     const words = new Uint32Array(this.columns * this.rows)
-    for (const key of this.cells) {
+    for (const [key, block] of this.cells) {
       const separator = key.indexOf(',')
       const column = Number(key.slice(0, separator))
       const row = Number(key.slice(separator + 1))
       if (Number.isInteger(column) && Number.isInteger(row) && this.contains({ column, row })) {
-        words[row * this.columns + column] = 1
+        words[row * this.columns + column] = GRID_BLOCK_CODES[block]
       }
     }
     return words
@@ -135,14 +147,18 @@ export class GridSelection {
   }
 }
 
-export function beginGridPaint(selection: GridSelection, cell: GridCell): GridPaintAction {
-  const action = { enabled: !selection.has(cell) }
-  selection.set(cell, action.enabled)
+export function beginGridPaint(
+  selection: GridSelection,
+  cell: GridCell,
+  block: GridBlockType = 'solid',
+): GridPaintAction {
+  const action = { block: selection.get(cell) === block ? null : block }
+  selection.set(cell, action.block)
   return action
 }
 
 export function paintGridCell(selection: GridSelection, action: GridPaintAction, cell: GridCell): void {
-  selection.set(cell, action.enabled)
+  selection.set(cell, action.block)
 }
 
 export function resolveGridCellSegment(start: GridCell, end: GridCell): GridCell[] {

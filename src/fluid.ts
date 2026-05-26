@@ -1018,9 +1018,9 @@ fn obstacleEnabled() -> bool {
     params.obstacle.z >= 1.0;
 }
 
-fn obstacleAtUv(uv: vec2f) -> bool {
+fn blockAtUv(uv: vec2f) -> u32 {
   if (!obstacleEnabled()) {
-    return false;
+    return 0u;
   }
 
   let cellSize = params.obstacle.x;
@@ -1031,44 +1031,61 @@ fn obstacleAtUv(uv: vec2f) -> bool {
   let local = pixel - params.obstacleOffset.xy;
 
   if (local.x < 0.0 || local.y < 0.0 || local.x >= gridSize.x || local.y >= gridSize.y) {
-    return false;
+    return 0u;
   }
 
   let cell = vec2u(floor(local / cellSize));
   let maskIndex = cell.y * u32(columns) + cell.x;
-  return obstacleCells[maskIndex] != 0u;
+  return obstacleCells[maskIndex];
+}
+
+fn solidAtUv(uv: vec2f) -> bool {
+  return blockAtUv(uv) == 1u;
+}
+
+fn emitterAtUv(uv: vec2f) -> bool {
+  return blockAtUv(uv) == 2u;
+}
+
+fn sinkAtUv(uv: vec2f) -> bool {
+  return blockAtUv(uv) == 3u;
+}
+
+fn fluidClearedAtUv(uv: vec2f) -> bool {
+  let block = blockAtUv(uv);
+  return block == 1u || block == 3u;
 }
 
 fn sourceAVelocityBlocked(uv: vec2f) -> vec2f {
-  if (obstacleAtUv(uv)) {
+  if (fluidClearedAtUv(uv)) {
     return vec2f(0.0);
   }
   return textureSampleLevel(sourceA, linearSampler, uv, 0.0).xy;
 }
 
 fn sourceAScalarBlocked(uv: vec2f) -> f32 {
-  if (obstacleAtUv(uv)) {
+  if (fluidClearedAtUv(uv)) {
     return 0.0;
   }
   return textureSampleLevel(sourceA, linearSampler, uv, 0.0).x;
 }
 
 fn sourceBScalarBlocked(uv: vec2f) -> f32 {
-  if (obstacleAtUv(uv)) {
+  if (fluidClearedAtUv(uv)) {
     return 0.0;
   }
   return textureSampleLevel(sourceB, linearSampler, uv, 0.0).x;
 }
 
 fn sourceAPressureBoundary(uv: vec2f, centerPressure: f32) -> f32 {
-  if (obstacleAtUv(uv)) {
+  if (solidAtUv(uv)) {
     return centerPressure;
   }
   return textureSampleLevel(sourceA, linearSampler, uv, 0.0).x;
 }
 
 fn sourceBPressureBoundary(uv: vec2f, centerPressure: f32) -> f32 {
-  if (obstacleAtUv(uv)) {
+  if (solidAtUv(uv)) {
     return centerPressure;
   }
   return textureSampleLevel(sourceB, linearSampler, uv, 0.0).x;
@@ -1091,7 +1108,7 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
 const VELOCITY_SPLAT_SHADER = `${COMPUTE_HEADER}
 ${COMPUTE_MAIN_PREFIX}
   let uv = targetUv(id);
-  if (obstacleAtUv(uv)) {
+  if (fluidClearedAtUv(uv)) {
     storeValue(id, vec4f(0.0, 0.0, 0.0, 1.0));
     return;
   }
@@ -1109,8 +1126,12 @@ ${COMPUTE_MAIN_PREFIX}
 const DYE_SPLAT_SHADER = `${COMPUTE_HEADER}
 ${COMPUTE_MAIN_PREFIX}
   let uv = targetUv(id);
-  if (obstacleAtUv(uv)) {
+  if (fluidClearedAtUv(uv)) {
     storeValue(id, vec4f(0.0, 0.0, 0.0, 1.0));
+    return;
+  }
+  if (emitterAtUv(uv)) {
+    storeValue(id, vec4f(1.0, 1.0, 1.0, 1.0));
     return;
   }
   let diff = uv - params.splat.xy;
@@ -1127,7 +1148,7 @@ ${COMPUTE_MAIN_PREFIX}
 const VELOCITY_ADVECTION_SHADER = `${COMPUTE_HEADER}
 ${COMPUTE_MAIN_PREFIX}
   let uv = targetUv(id);
-  if (obstacleAtUv(uv)) {
+  if (fluidClearedAtUv(uv)) {
     storeValue(id, vec4f(0.0, 0.0, 0.0, 1.0));
     return;
   }
@@ -1143,14 +1164,18 @@ ${COMPUTE_MAIN_PREFIX}
 const DYE_ADVECTION_SHADER = `${COMPUTE_HEADER}
 ${COMPUTE_MAIN_PREFIX}
   let uv = targetUv(id);
-  if (obstacleAtUv(uv)) {
+  if (fluidClearedAtUv(uv)) {
     storeValue(id, vec4f(0.0, 0.0, 0.0, 1.0));
+    return;
+  }
+  if (emitterAtUv(uv)) {
+    storeValue(id, vec4f(1.0, 1.0, 1.0, 1.0));
     return;
   }
   let velocity = sourceAVelocityBlocked(uv);
   let sampleUv = clampToTexel(uv - velocity * params.time.x * params.simSize.zw, params.dyeSize.zw);
   var sampled = vec3f(0.0);
-  if (!obstacleAtUv(sampleUv)) {
+  if (!fluidClearedAtUv(sampleUv)) {
     sampled = textureSampleLevel(sourceB, linearSampler, sampleUv, 0.0).xyz;
   }
   let decay = 1.0 / (1.0 + params.coefficients.y * params.time.x);
@@ -1162,7 +1187,7 @@ ${COMPUTE_MAIN_PREFIX}
 const CURL_SHADER = `${COMPUTE_HEADER}
 ${COMPUTE_MAIN_PREFIX}
   let uv = targetUv(id);
-  if (obstacleAtUv(uv)) {
+  if (fluidClearedAtUv(uv)) {
     storeValue(id, vec4f(0.0, 0.0, 0.0, 1.0));
     return;
   }
@@ -1179,7 +1204,7 @@ ${COMPUTE_MAIN_PREFIX}
 const VORTICITY_SHADER = `${COMPUTE_HEADER}
 ${COMPUTE_MAIN_PREFIX}
   let uv = targetUv(id);
-  if (obstacleAtUv(uv)) {
+  if (fluidClearedAtUv(uv)) {
     storeValue(id, vec4f(0.0, 0.0, 0.0, 1.0));
     return;
   }
@@ -1201,7 +1226,7 @@ ${COMPUTE_MAIN_PREFIX}
 const DIVERGENCE_SHADER = `${COMPUTE_HEADER}
 ${COMPUTE_MAIN_PREFIX}
   let uv = targetUv(id);
-  if (obstacleAtUv(uv)) {
+  if (fluidClearedAtUv(uv)) {
     storeValue(id, vec4f(0.0, 0.0, 0.0, 1.0));
     return;
   }
@@ -1218,7 +1243,7 @@ ${COMPUTE_MAIN_PREFIX}
 const PRESSURE_CLEAR_SHADER = `${COMPUTE_HEADER}
 ${COMPUTE_MAIN_PREFIX}
   let uv = targetUv(id);
-  if (obstacleAtUv(uv)) {
+  if (fluidClearedAtUv(uv)) {
     storeValue(id, vec4f(0.0, 0.0, 0.0, 1.0));
     return;
   }
@@ -1230,7 +1255,7 @@ ${COMPUTE_MAIN_PREFIX}
 const PRESSURE_JACOBI_SHADER = `${COMPUTE_HEADER}
 ${COMPUTE_MAIN_PREFIX}
   let uv = targetUv(id);
-  if (obstacleAtUv(uv)) {
+  if (fluidClearedAtUv(uv)) {
     storeValue(id, vec4f(0.0, 0.0, 0.0, 1.0));
     return;
   }
@@ -1249,7 +1274,7 @@ ${COMPUTE_MAIN_PREFIX}
 const GRADIENT_SUBTRACT_SHADER = `${COMPUTE_HEADER}
 ${COMPUTE_MAIN_PREFIX}
   let uv = targetUv(id);
-  if (obstacleAtUv(uv)) {
+  if (fluidClearedAtUv(uv)) {
     storeValue(id, vec4f(0.0, 0.0, 0.0, 1.0));
     return;
   }
@@ -1266,16 +1291,16 @@ ${COMPUTE_MAIN_PREFIX}
   let gradient = vec2f(right - left, up - down) * 0.5;
   let velocity = sourceAVelocityBlocked(uv);
   var updated = maxVelocityClamp(velocity - gradient);
-  if (obstacleAtUv(leftUv)) {
+  if (solidAtUv(leftUv)) {
     updated.x = max(updated.x, 0.0);
   }
-  if (obstacleAtUv(rightUv)) {
+  if (solidAtUv(rightUv)) {
     updated.x = min(updated.x, 0.0);
   }
-  if (obstacleAtUv(downUv)) {
+  if (solidAtUv(downUv)) {
     updated.y = max(updated.y, 0.0);
   }
-  if (obstacleAtUv(upUv)) {
+  if (solidAtUv(upUv)) {
     updated.y = min(updated.y, 0.0);
   }
   storeValue(id, vec4f(updated, 0.0, 1.0));
@@ -1328,7 +1353,8 @@ fn fragmentMain(input: VertexOut) -> @location(0) vec4f {
   let cell = local / cellSize;
   let cellIndex = vec2u(floor(cell));
   let maskIndex = cellIndex.y * u32(columns) + cellIndex.x;
-  let isActive = activeCells[maskIndex] != 0u;
+  let block = activeCells[maskIndex];
+  let isActive = block != 0u;
   let wrapped = fract(cell);
   let distanceToLine = min(
     min(wrapped.x, 1.0 - wrapped.x),
@@ -1337,9 +1363,16 @@ fn fragmentMain(input: VertexOut) -> @location(0) vec4f {
   let halfLineWidth = max(grid.metrics.w * 0.5, 0.125);
   let lineAlpha = (1.0 - smoothstep(halfLineWidth, halfLineWidth + 1.0, distanceToLine)) * grid.offset.z;
   let fillAlpha = select(0.0, 0.42, isActive);
+  var fillColor = vec3f(1.0, 0.04, 0.02);
+  if (block == 2u) {
+    fillColor = vec3f(0.18, 1.0, 0.28);
+  }
+  if (block == 3u) {
+    fillColor = vec3f(0.20, 0.32, 1.0);
+  }
   let alpha = fillAlpha + lineAlpha * (1.0 - fillAlpha);
   let color = (
-    vec3f(1.0, 0.04, 0.02) * fillAlpha +
+    fillColor * fillAlpha +
     vec3f(0.15, 0.82, 1.0) * lineAlpha * (1.0 - fillAlpha)
   ) / max(alpha, 0.0001);
 

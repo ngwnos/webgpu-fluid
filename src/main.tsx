@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 
 import { AppMenu } from './AppMenu'
 import { resolveCanvasViewport } from './canvasViewport'
+import { getCellPlacementMode } from './cellPlacementMode'
 import {
   CURSOR_MOVEMENT_SAMPLE_INTERVAL_MS,
   advanceCursorMovementEnvelope,
@@ -219,7 +220,7 @@ async function start(canvas: HTMLCanvasElement, statusElement: HTMLElement): Pro
     lastPaintCell = null
     if (!cell) return
 
-    activePaint = beginGridPaint(gridSelection, cell)
+    activePaint = beginGridPaint(gridSelection, cell, getCellPlacementMode())
     lastPaintCell = cell
   }
 

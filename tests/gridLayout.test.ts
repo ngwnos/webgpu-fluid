@@ -58,14 +58,38 @@ describe('GridSelection painting', () => {
 
   test('paints cells off when the first clicked cell is on', () => {
     const selection = new GridSelection(4, 3)
-    selection.set({ column: 1, row: 1 }, true)
-    selection.set({ column: 2, row: 1 }, true)
+    selection.set({ column: 1, row: 1 }, 'solid')
+    selection.set({ column: 2, row: 1 }, 'solid')
     const paint = beginGridPaint(selection, { column: 1, row: 1 })
 
     paintGridCell(selection, paint, { column: 2, row: 1 })
 
     expect(selection.has({ column: 1, row: 1 })).toBe(false)
     expect(selection.has({ column: 2, row: 1 })).toBe(false)
+  })
+
+  test('replaces different block types with the selected placement mode', () => {
+    const selection = new GridSelection(4, 3)
+    selection.set({ column: 1, row: 1 }, 'solid')
+    selection.set({ column: 2, row: 1 }, 'sink')
+    const paint = beginGridPaint(selection, { column: 1, row: 1 }, 'emitter')
+
+    paintGridCell(selection, paint, { column: 2, row: 1 })
+
+    expect(selection.get({ column: 1, row: 1 })).toBe('emitter')
+    expect(selection.get({ column: 2, row: 1 })).toBe('emitter')
+  })
+
+  test('toggles off only when painting starts on the selected block type', () => {
+    const selection = new GridSelection(4, 3)
+    selection.set({ column: 1, row: 1 }, 'sink')
+    selection.set({ column: 2, row: 1 }, 'emitter')
+    const paint = beginGridPaint(selection, { column: 1, row: 1 }, 'sink')
+
+    paintGridCell(selection, paint, { column: 2, row: 1 })
+
+    expect(selection.get({ column: 1, row: 1 })).toBeNull()
+    expect(selection.get({ column: 2, row: 1 })).toBeNull()
   })
 
   test('resolves skipped cells along a drag segment', () => {
@@ -79,9 +103,11 @@ describe('GridSelection painting', () => {
 })
 
 describe('createGridMask', () => {
-  test('packages the current centered square grid and selected cells into a row-major mask', () => {
+  test('packages the current centered square grid and block types into a row-major mask', () => {
     const selection = new GridSelection(5, 3)
-    selection.set({ column: 2, row: 1 }, true)
+    selection.set({ column: 2, row: 1 }, 'solid')
+    selection.set({ column: 3, row: 1 }, 'emitter')
+    selection.set({ column: 4, row: 1 }, 'sink')
 
     const mask = createGridMask({ width: 103, height: 74 }, 20, selection)
 
@@ -92,7 +118,7 @@ describe('createGridMask', () => {
     expect(mask.marginY).toBe(7)
     expect(Array.from(mask.data)).toEqual([
       0, 0, 0, 0, 0,
-      0, 0, 1, 0, 0,
+      0, 0, 1, 2, 3,
       0, 0, 0, 0, 0,
     ])
     expect(mask.version).toBe(selection.version)

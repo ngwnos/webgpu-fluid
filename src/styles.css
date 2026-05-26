@@ -159,6 +159,57 @@ body {
   font: 12px/1.3 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
+.cell-window__modes {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.cell-window__mode {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  height: 30px;
+  padding: 0 7px;
+  color: #d7e3e6;
+  background: rgba(2, 6, 8, 0.68);
+  border: 1px solid rgba(82, 210, 228, 0.25);
+  border-radius: 4px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.cell-window__mode:hover,
+.cell-window__mode:focus-visible {
+  color: #ffffff;
+  border-color: rgba(82, 210, 228, 0.5);
+  outline: none;
+}
+
+.cell-window__mode[data-active='true'] {
+  color: #ffffff;
+  background: rgba(17, 84, 96, 0.72);
+  border-color: rgba(82, 210, 228, 0.62);
+}
+
+.cell-window__swatch {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: #ff0a05;
+}
+
+.cell-window__mode[data-mode='emitter'] .cell-window__swatch {
+  background: #2eff47;
+}
+
+.cell-window__mode[data-mode='sink'] .cell-window__swatch {
+  background: #3452ff;
+}
+
 .cursor-window {
   display: grid;
   gap: 12px;
