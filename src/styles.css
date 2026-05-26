@@ -155,6 +155,7 @@ body {
 .cell-window {
   display: grid;
   gap: 12px;
+  min-height: 56px;
   font: 12px/1.3 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
@@ -167,50 +168,6 @@ body {
 .cursor-window .cursor-movement-graph {
   width: 100%;
   height: 34px;
-}
-
-.cell-window__field {
-  display: grid;
-  gap: 6px;
-}
-
-.cell-window__field span,
-.cell-window__check span {
-  color: #a9bdc2;
-}
-
-.cell-window__field input,
-.cell-window__field select {
-  width: 100%;
-}
-
-.cell-window__field select {
-  height: 28px;
-  color: #d7e3e6;
-  background: #0b171a;
-  border: 1px solid rgba(82, 210, 228, 0.32);
-  border-radius: 4px;
-}
-
-.cell-window__check {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.cell-window__action {
-  height: 30px;
-  color: #ffffff;
-  background: rgba(120, 26, 22, 0.82);
-  border: 1px solid rgba(255, 80, 68, 0.4);
-  border-radius: 4px;
-  font: inherit;
-}
-
-.cell-window__action:hover,
-.cell-window__action:focus-visible {
-  background: rgba(152, 34, 28, 0.92);
-  outline: none;
 }
 
 #viewport {

@@ -78,27 +78,7 @@ export function AppMenu(): React.JSX.Element {
         onOpenChange={setCellWindowOpen}
         defaultPosition={VIEW_FLOATING_WINDOWS[0].defaultPosition}
       >
-        <div className="cell-window">
-          <label className="cell-window__field">
-            <span>Cell size</span>
-            <input type="range" min="16" max="96" defaultValue="40" />
-          </label>
-          <label className="cell-window__field">
-            <span>Paint mode</span>
-            <select defaultValue="toggle">
-              <option value="toggle">Toggle</option>
-              <option value="on">Paint on</option>
-              <option value="off">Paint off</option>
-            </select>
-          </label>
-          <label className="cell-window__check">
-            <input type="checkbox" defaultChecked />
-            <span>Show grid lines</span>
-          </label>
-          <button className="cell-window__action" type="button">
-            Clear active cells
-          </button>
-        </div>
+        <div className="cell-window" />
       </FloatingWindow>
 
       <FloatingWindow
