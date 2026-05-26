@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test'
 import {
   GridSelection,
   beginGridPaint,
+  createGridMask,
   paintGridCell,
   resolveGridCell,
   resolveGridCellSegment,
@@ -74,5 +75,26 @@ describe('GridSelection painting', () => {
       { column: 2, row: 1 },
       { column: 3, row: 1 },
     ])
+  })
+})
+
+describe('createGridMask', () => {
+  test('packages the current centered square grid and selected cells into a row-major mask', () => {
+    const selection = new GridSelection(5, 3)
+    selection.set({ column: 2, row: 1 }, true)
+
+    const mask = createGridMask({ width: 103, height: 74 }, 20, selection)
+
+    expect(mask.cellSizePx).toBe(20)
+    expect(mask.columns).toBe(5)
+    expect(mask.rows).toBe(3)
+    expect(mask.marginX).toBe(1.5)
+    expect(mask.marginY).toBe(7)
+    expect(Array.from(mask.data)).toEqual([
+      0, 0, 0, 0, 0,
+      0, 0, 1, 0, 0,
+      0, 0, 0, 0, 0,
+    ])
+    expect(mask.version).toBe(selection.version)
   })
 })

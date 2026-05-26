@@ -52,6 +52,12 @@ export type GridOverlayMask = {
   readonly version: number
 }
 
+export type FluidObstacleMask = GridOverlayMask & {
+  readonly cellSizePx: number
+  readonly marginX: number
+  readonly marginY: number
+}
+
 export type WhiteDyeFluidRenderOptions = {
   readonly grid?: GridOverlayOptions
 }
@@ -119,7 +125,7 @@ export const WHITE_DYE_FLUID_DEFAULTS = {
   maxVelocity: 240,
 } as const satisfies WhiteDyeFluidResolvedOptions
 
-const PARAM_FLOAT_COUNT = 24
+const PARAM_FLOAT_COUNT = 36
 const PARAM_BYTE_LENGTH = PARAM_FLOAT_COUNT * Float32Array.BYTES_PER_ELEMENT
 const GRID_PARAM_FLOAT_COUNT = 12
 const GRID_PARAM_BYTE_LENGTH = GRID_PARAM_FLOAT_COUNT * Float32Array.BYTES_PER_ELEMENT
@@ -226,6 +232,10 @@ export class WhiteDyeFluidSimulation {
   private readonly gridUniformBuffer: GPUBuffer
   private gridMaskBuffer: GPUBuffer | null = null
   private gridMaskCapacity = 0
+  private obstacleMaskBuffer: GPUBuffer | null = null
+  private obstacleMaskCapacity = 0
+  private obstacleMaskKey = ''
+  private obstacleMask: FluidObstacleMask | null = null
   private readonly params = new Float32Array(PARAM_FLOAT_COUNT)
   private readonly gridParams = new Float32Array(GRID_PARAM_FLOAT_COUNT)
   private readonly pendingSplats: WhiteDyeFluidSplatEvent[] = []
@@ -326,6 +336,35 @@ export class WhiteDyeFluidSimulation {
     }
   }
 
+  setObstacleMask(mask: FluidObstacleMask | null): void {
+    const cellCount = mask ? mask.columns * mask.rows : 0
+    if (
+      !mask ||
+      mask.cellSizePx <= 0 ||
+      mask.columns <= 0 ||
+      mask.rows <= 0 ||
+      mask.data.length < cellCount
+    ) {
+      this.obstacleMask = null
+      this.obstacleMaskKey = ''
+      return
+    }
+
+    this.obstacleMask = mask
+    const key = [
+      mask.cellSizePx,
+      mask.columns,
+      mask.rows,
+      mask.marginX,
+      mask.marginY,
+      mask.version,
+    ].join(':')
+    if (key === this.obstacleMaskKey) return
+
+    this.obstacleMaskKey = key
+    this.writeObstacleMaskBuffer(mask)
+  }
+
   step(deltaSeconds = 1 / 60): void {
     const textures = this.getTextures()
 
@@ -403,6 +442,7 @@ export class WhiteDyeFluidSimulation {
   destroy(): void {
     this.destroyTextures()
     this.destroyGridMaskBuffer()
+    this.destroyObstacleMaskBuffer()
     this.uniformBuffer.destroy()
     this.gridUniformBuffer.destroy()
   }
@@ -551,6 +591,7 @@ export class WhiteDyeFluidSimulation {
         { binding: 2, resource: targetTexture.createView() },
         { binding: 3, resource: this.sampler },
         { binding: 4, resource: { buffer: this.uniformBuffer } },
+        { binding: 5, resource: { buffer: this.getObstacleMaskBuffer() } },
       ],
     })
     const encoder = this.device.createCommandEncoder()
@@ -603,6 +644,18 @@ export class WhiteDyeFluidSimulation {
     this.params[21] = splat?.velocityY ?? this.params[21] ?? 0
     this.params[22] = splat?.aspectX ?? this.params[22] ?? 1
     this.params[23] = splat?.aspectY ?? this.params[23] ?? 1
+    this.params[24] = this.viewport.width
+    this.params[25] = this.viewport.height
+    this.params[26] = 1 / this.viewport.width
+    this.params[27] = 1 / this.viewport.height
+    this.params[28] = this.obstacleMask?.cellSizePx ?? 1
+    this.params[29] = this.obstacleMask?.columns ?? 0
+    this.params[30] = this.obstacleMask?.rows ?? 0
+    this.params[31] = this.obstacleMask ? 1 : 0
+    this.params[32] = this.obstacleMask?.marginX ?? 0
+    this.params[33] = this.obstacleMask?.marginY ?? 0
+    this.params[34] = 0
+    this.params[35] = 0
 
     this.device.queue.writeBuffer(this.uniformBuffer, 0, this.params)
   }
@@ -753,6 +806,41 @@ export class WhiteDyeFluidSimulation {
     this.gridMaskCapacity = 0
   }
 
+  private writeObstacleMaskBuffer(mask: FluidObstacleMask): void {
+    const cellCount = mask.columns * mask.rows
+    const wordsLength = Math.max(1, cellCount)
+    const words = new Uint32Array(wordsLength)
+    words.set(mask.data.subarray(0, cellCount))
+
+    const buffer = this.ensureObstacleMaskBuffer(wordsLength)
+    this.device.queue.writeBuffer(buffer, 0, words)
+  }
+
+  private getObstacleMaskBuffer(): GPUBuffer {
+    return this.ensureObstacleMaskBuffer(1)
+  }
+
+  private ensureObstacleMaskBuffer(wordsLength: number): GPUBuffer {
+    const capacity = Math.max(1, wordsLength)
+    if (!this.obstacleMaskBuffer || this.obstacleMaskCapacity < capacity) {
+      this.destroyObstacleMaskBuffer()
+      this.obstacleMaskBuffer = this.device.createBuffer({
+        label: 'webgpu-fluid-obstacle-mask',
+        size: capacity * Uint32Array.BYTES_PER_ELEMENT,
+        usage: GPU_BUFFER_USAGE_FLAGS.storage | GPU_BUFFER_USAGE_FLAGS.copyDst,
+      })
+      this.obstacleMaskCapacity = capacity
+    }
+
+    return this.obstacleMaskBuffer
+  }
+
+  private destroyObstacleMaskBuffer(): void {
+    this.obstacleMaskBuffer?.destroy()
+    this.obstacleMaskBuffer = null
+    this.obstacleMaskCapacity = 0
+  }
+
   private destroyTextures(): void {
     if (!this.textures) return
 
@@ -833,6 +921,13 @@ function createFluidBindGroupLayout(device: GPUDevice): GPUBindGroupLayout {
           minBindingSize: PARAM_BYTE_LENGTH,
         },
       },
+      {
+        binding: 5,
+        visibility: GPU_SHADER_STAGE_FLAGS.compute,
+        buffer: {
+          type: 'read-only-storage',
+        },
+      },
     ],
   })
 }
@@ -889,6 +984,9 @@ struct FluidParams {
   coefficients: vec4f,
   splat: vec4f,
   splatVelocity: vec4f,
+  viewport: vec4f,
+  obstacle: vec4f,
+  obstacleOffset: vec4f,
 }
 
 @group(0) @binding(0) var sourceA: texture_2d<f32>;
@@ -896,6 +994,7 @@ struct FluidParams {
 @group(0) @binding(2) var targetTexture: texture_storage_2d<rgba16float, write>;
 @group(0) @binding(3) var linearSampler: sampler;
 @group(0) @binding(4) var<uniform> params: FluidParams;
+@group(0) @binding(5) var<storage, read> obstacleCells: array<u32>;
 
 fn targetUv(id: vec3u) -> vec2f {
   let dims = vec2f(textureDimensions(targetTexture));
@@ -910,6 +1009,69 @@ fn clampToTexel(coord: vec2f, invSize: vec2f) -> vec2f {
 fn maxVelocityClamp(velocity: vec2f) -> vec2f {
   let maxVelocity = params.time.w;
   return clamp(velocity, vec2f(-maxVelocity), vec2f(maxVelocity));
+}
+
+fn obstacleEnabled() -> bool {
+  return params.obstacle.w > 0.5 &&
+    params.obstacle.x > 0.0 &&
+    params.obstacle.y >= 1.0 &&
+    params.obstacle.z >= 1.0;
+}
+
+fn obstacleAtUv(uv: vec2f) -> bool {
+  if (!obstacleEnabled()) {
+    return false;
+  }
+
+  let cellSize = params.obstacle.x;
+  let columns = params.obstacle.y;
+  let rows = params.obstacle.z;
+  let gridSize = vec2f(columns, rows) * cellSize;
+  let pixel = uv * params.viewport.xy;
+  let local = pixel - params.obstacleOffset.xy;
+
+  if (local.x < 0.0 || local.y < 0.0 || local.x >= gridSize.x || local.y >= gridSize.y) {
+    return false;
+  }
+
+  let cell = vec2u(floor(local / cellSize));
+  let maskIndex = cell.y * u32(columns) + cell.x;
+  return obstacleCells[maskIndex] != 0u;
+}
+
+fn sourceAVelocityBlocked(uv: vec2f) -> vec2f {
+  if (obstacleAtUv(uv)) {
+    return vec2f(0.0);
+  }
+  return textureSampleLevel(sourceA, linearSampler, uv, 0.0).xy;
+}
+
+fn sourceAScalarBlocked(uv: vec2f) -> f32 {
+  if (obstacleAtUv(uv)) {
+    return 0.0;
+  }
+  return textureSampleLevel(sourceA, linearSampler, uv, 0.0).x;
+}
+
+fn sourceBScalarBlocked(uv: vec2f) -> f32 {
+  if (obstacleAtUv(uv)) {
+    return 0.0;
+  }
+  return textureSampleLevel(sourceB, linearSampler, uv, 0.0).x;
+}
+
+fn sourceAPressureBoundary(uv: vec2f, centerPressure: f32) -> f32 {
+  if (obstacleAtUv(uv)) {
+    return centerPressure;
+  }
+  return textureSampleLevel(sourceA, linearSampler, uv, 0.0).x;
+}
+
+fn sourceBPressureBoundary(uv: vec2f, centerPressure: f32) -> f32 {
+  if (obstacleAtUv(uv)) {
+    return centerPressure;
+  }
+  return textureSampleLevel(sourceB, linearSampler, uv, 0.0).x;
 }
 
 fn storeValue(id: vec3u, value: vec4f) {
@@ -929,12 +1091,16 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
 const VELOCITY_SPLAT_SHADER = `${COMPUTE_HEADER}
 ${COMPUTE_MAIN_PREFIX}
   let uv = targetUv(id);
+  if (obstacleAtUv(uv)) {
+    storeValue(id, vec4f(0.0, 0.0, 0.0, 1.0));
+    return;
+  }
   let diff = uv - params.splat.xy;
   let scaled = vec2f(diff.x * params.splatVelocity.z, diff.y * params.splatVelocity.w);
   let distSq = dot(scaled, scaled);
   let radiusSq = max(params.splat.z * params.splat.z, 0.000001);
   let influence = exp(-distSq / radiusSq) * params.splat.w;
-  let velocity = textureSampleLevel(sourceA, linearSampler, uv, 0.0).xy;
+  let velocity = sourceAVelocityBlocked(uv);
   let updated = maxVelocityClamp(velocity + params.splatVelocity.xy * influence);
   storeValue(id, vec4f(updated, 0.0, 1.0));
 }
@@ -943,6 +1109,10 @@ ${COMPUTE_MAIN_PREFIX}
 const DYE_SPLAT_SHADER = `${COMPUTE_HEADER}
 ${COMPUTE_MAIN_PREFIX}
   let uv = targetUv(id);
+  if (obstacleAtUv(uv)) {
+    storeValue(id, vec4f(0.0, 0.0, 0.0, 1.0));
+    return;
+  }
   let diff = uv - params.splat.xy;
   let scaled = vec2f(diff.x * params.splatVelocity.z, diff.y * params.splatVelocity.w);
   let distSq = dot(scaled, scaled);
@@ -957,9 +1127,13 @@ ${COMPUTE_MAIN_PREFIX}
 const VELOCITY_ADVECTION_SHADER = `${COMPUTE_HEADER}
 ${COMPUTE_MAIN_PREFIX}
   let uv = targetUv(id);
-  let velocity = textureSampleLevel(sourceA, linearSampler, uv, 0.0).xy;
+  if (obstacleAtUv(uv)) {
+    storeValue(id, vec4f(0.0, 0.0, 0.0, 1.0));
+    return;
+  }
+  let velocity = sourceAVelocityBlocked(uv);
   let sampleUv = clampToTexel(uv - velocity * params.time.x * params.simSize.zw, params.simSize.zw);
-  let sampled = textureSampleLevel(sourceA, linearSampler, sampleUv, 0.0).xy;
+  let sampled = sourceAVelocityBlocked(sampleUv);
   let decay = 1.0 / (1.0 + params.coefficients.x * params.time.x);
   let updated = maxVelocityClamp(sampled * decay);
   storeValue(id, vec4f(updated, 0.0, 1.0));
@@ -969,9 +1143,16 @@ ${COMPUTE_MAIN_PREFIX}
 const DYE_ADVECTION_SHADER = `${COMPUTE_HEADER}
 ${COMPUTE_MAIN_PREFIX}
   let uv = targetUv(id);
-  let velocity = textureSampleLevel(sourceA, linearSampler, uv, 0.0).xy;
+  if (obstacleAtUv(uv)) {
+    storeValue(id, vec4f(0.0, 0.0, 0.0, 1.0));
+    return;
+  }
+  let velocity = sourceAVelocityBlocked(uv);
   let sampleUv = clampToTexel(uv - velocity * params.time.x * params.simSize.zw, params.dyeSize.zw);
-  let sampled = textureSampleLevel(sourceB, linearSampler, sampleUv, 0.0).xyz;
+  var sampled = vec3f(0.0);
+  if (!obstacleAtUv(sampleUv)) {
+    sampled = textureSampleLevel(sourceB, linearSampler, sampleUv, 0.0).xyz;
+  }
   let decay = 1.0 / (1.0 + params.coefficients.y * params.time.x);
   let density = clamp(sampled * decay, vec3f(0.0), vec3f(1.0));
   storeValue(id, vec4f(density, 1.0));
@@ -981,11 +1162,15 @@ ${COMPUTE_MAIN_PREFIX}
 const CURL_SHADER = `${COMPUTE_HEADER}
 ${COMPUTE_MAIN_PREFIX}
   let uv = targetUv(id);
+  if (obstacleAtUv(uv)) {
+    storeValue(id, vec4f(0.0, 0.0, 0.0, 1.0));
+    return;
+  }
   let texel = params.simSize.zw;
-  let left = textureSampleLevel(sourceA, linearSampler, vec2f(max(uv.x - texel.x, 0.0), uv.y), 0.0).xy;
-  let right = textureSampleLevel(sourceA, linearSampler, vec2f(min(uv.x + texel.x, 1.0), uv.y), 0.0).xy;
-  let down = textureSampleLevel(sourceA, linearSampler, vec2f(uv.x, max(uv.y - texel.y, 0.0)), 0.0).xy;
-  let up = textureSampleLevel(sourceA, linearSampler, vec2f(uv.x, min(uv.y + texel.y, 1.0)), 0.0).xy;
+  let left = sourceAVelocityBlocked(vec2f(max(uv.x - texel.x, 0.0), uv.y));
+  let right = sourceAVelocityBlocked(vec2f(min(uv.x + texel.x, 1.0), uv.y));
+  let down = sourceAVelocityBlocked(vec2f(uv.x, max(uv.y - texel.y, 0.0)));
+  let up = sourceAVelocityBlocked(vec2f(uv.x, min(uv.y + texel.y, 1.0)));
   let curl = right.y - left.y - (up.x - down.x);
   storeValue(id, vec4f(curl, 0.0, 0.0, 1.0));
 }
@@ -994,16 +1179,20 @@ ${COMPUTE_MAIN_PREFIX}
 const VORTICITY_SHADER = `${COMPUTE_HEADER}
 ${COMPUTE_MAIN_PREFIX}
   let uv = targetUv(id);
+  if (obstacleAtUv(uv)) {
+    storeValue(id, vec4f(0.0, 0.0, 0.0, 1.0));
+    return;
+  }
   let texel = params.simSize.zw;
-  let centerCurl = textureSampleLevel(sourceB, linearSampler, uv, 0.0).x;
-  let leftCurl = textureSampleLevel(sourceB, linearSampler, vec2f(max(uv.x - texel.x, 0.0), uv.y), 0.0).x;
-  let rightCurl = textureSampleLevel(sourceB, linearSampler, vec2f(min(uv.x + texel.x, 1.0), uv.y), 0.0).x;
-  let downCurl = textureSampleLevel(sourceB, linearSampler, vec2f(uv.x, max(uv.y - texel.y, 0.0)), 0.0).x;
-  let upCurl = textureSampleLevel(sourceB, linearSampler, vec2f(uv.x, min(uv.y + texel.y, 1.0)), 0.0).x;
+  let centerCurl = sourceBScalarBlocked(uv);
+  let leftCurl = sourceBScalarBlocked(vec2f(max(uv.x - texel.x, 0.0), uv.y));
+  let rightCurl = sourceBScalarBlocked(vec2f(min(uv.x + texel.x, 1.0), uv.y));
+  let downCurl = sourceBScalarBlocked(vec2f(uv.x, max(uv.y - texel.y, 0.0)));
+  let upCurl = sourceBScalarBlocked(vec2f(uv.x, min(uv.y + texel.y, 1.0)));
   let force = vec2f(abs(upCurl) - abs(downCurl), abs(rightCurl) - abs(leftCurl)) * 0.5;
   let normalized = force / max(length(force), 0.00001);
   let adjustedForce = vec2f(normalized.x, -normalized.y) * params.coefficients.z * centerCurl;
-  let velocity = textureSampleLevel(sourceA, linearSampler, uv, 0.0).xy;
+  let velocity = sourceAVelocityBlocked(uv);
   let updated = maxVelocityClamp(velocity + adjustedForce * params.time.x);
   storeValue(id, vec4f(updated, 0.0, 1.0));
 }
@@ -1012,11 +1201,15 @@ ${COMPUTE_MAIN_PREFIX}
 const DIVERGENCE_SHADER = `${COMPUTE_HEADER}
 ${COMPUTE_MAIN_PREFIX}
   let uv = targetUv(id);
+  if (obstacleAtUv(uv)) {
+    storeValue(id, vec4f(0.0, 0.0, 0.0, 1.0));
+    return;
+  }
   let texel = params.simSize.zw;
-  let left = textureSampleLevel(sourceA, linearSampler, vec2f(max(uv.x - texel.x, 0.0), uv.y), 0.0).xy;
-  let right = textureSampleLevel(sourceA, linearSampler, vec2f(min(uv.x + texel.x, 1.0), uv.y), 0.0).xy;
-  let down = textureSampleLevel(sourceA, linearSampler, vec2f(uv.x, max(uv.y - texel.y, 0.0)), 0.0).xy;
-  let up = textureSampleLevel(sourceA, linearSampler, vec2f(uv.x, min(uv.y + texel.y, 1.0)), 0.0).xy;
+  let left = sourceAVelocityBlocked(vec2f(max(uv.x - texel.x, 0.0), uv.y));
+  let right = sourceAVelocityBlocked(vec2f(min(uv.x + texel.x, 1.0), uv.y));
+  let down = sourceAVelocityBlocked(vec2f(uv.x, max(uv.y - texel.y, 0.0)));
+  let up = sourceAVelocityBlocked(vec2f(uv.x, min(uv.y + texel.y, 1.0)));
   let divergence = (right.x - left.x + up.y - down.y) * 0.5;
   storeValue(id, vec4f(divergence, 0.0, 0.0, 1.0));
 }
@@ -1025,6 +1218,10 @@ ${COMPUTE_MAIN_PREFIX}
 const PRESSURE_CLEAR_SHADER = `${COMPUTE_HEADER}
 ${COMPUTE_MAIN_PREFIX}
   let uv = targetUv(id);
+  if (obstacleAtUv(uv)) {
+    storeValue(id, vec4f(0.0, 0.0, 0.0, 1.0));
+    return;
+  }
   let pressure = textureSampleLevel(sourceA, linearSampler, uv, 0.0).x * params.time.z;
   storeValue(id, vec4f(pressure, 0.0, 0.0, 1.0));
 }
@@ -1033,12 +1230,17 @@ ${COMPUTE_MAIN_PREFIX}
 const PRESSURE_JACOBI_SHADER = `${COMPUTE_HEADER}
 ${COMPUTE_MAIN_PREFIX}
   let uv = targetUv(id);
+  if (obstacleAtUv(uv)) {
+    storeValue(id, vec4f(0.0, 0.0, 0.0, 1.0));
+    return;
+  }
   let texel = params.simSize.zw;
-  let left = textureSampleLevel(sourceA, linearSampler, vec2f(max(uv.x - texel.x, 0.0), uv.y), 0.0).x;
-  let right = textureSampleLevel(sourceA, linearSampler, vec2f(min(uv.x + texel.x, 1.0), uv.y), 0.0).x;
-  let down = textureSampleLevel(sourceA, linearSampler, vec2f(uv.x, max(uv.y - texel.y, 0.0)), 0.0).x;
-  let up = textureSampleLevel(sourceA, linearSampler, vec2f(uv.x, min(uv.y + texel.y, 1.0)), 0.0).x;
-  let divergence = textureSampleLevel(sourceB, linearSampler, uv, 0.0).x;
+  let center = textureSampleLevel(sourceA, linearSampler, uv, 0.0).x;
+  let left = sourceAPressureBoundary(vec2f(max(uv.x - texel.x, 0.0), uv.y), center);
+  let right = sourceAPressureBoundary(vec2f(min(uv.x + texel.x, 1.0), uv.y), center);
+  let down = sourceAPressureBoundary(vec2f(uv.x, max(uv.y - texel.y, 0.0)), center);
+  let up = sourceAPressureBoundary(vec2f(uv.x, min(uv.y + texel.y, 1.0)), center);
+  let divergence = sourceBScalarBlocked(uv);
   let pressure = (left + right + up + down - divergence) * 0.25;
   storeValue(id, vec4f(pressure, 0.0, 0.0, 1.0));
 }
@@ -1047,14 +1249,35 @@ ${COMPUTE_MAIN_PREFIX}
 const GRADIENT_SUBTRACT_SHADER = `${COMPUTE_HEADER}
 ${COMPUTE_MAIN_PREFIX}
   let uv = targetUv(id);
+  if (obstacleAtUv(uv)) {
+    storeValue(id, vec4f(0.0, 0.0, 0.0, 1.0));
+    return;
+  }
   let texel = params.simSize.zw;
-  let left = textureSampleLevel(sourceB, linearSampler, vec2f(max(uv.x - texel.x, 0.0), uv.y), 0.0).x;
-  let right = textureSampleLevel(sourceB, linearSampler, vec2f(min(uv.x + texel.x, 1.0), uv.y), 0.0).x;
-  let down = textureSampleLevel(sourceB, linearSampler, vec2f(uv.x, max(uv.y - texel.y, 0.0)), 0.0).x;
-  let up = textureSampleLevel(sourceB, linearSampler, vec2f(uv.x, min(uv.y + texel.y, 1.0)), 0.0).x;
+  let center = textureSampleLevel(sourceB, linearSampler, uv, 0.0).x;
+  let leftUv = vec2f(max(uv.x - texel.x, 0.0), uv.y);
+  let rightUv = vec2f(min(uv.x + texel.x, 1.0), uv.y);
+  let downUv = vec2f(uv.x, max(uv.y - texel.y, 0.0));
+  let upUv = vec2f(uv.x, min(uv.y + texel.y, 1.0));
+  let left = sourceBPressureBoundary(leftUv, center);
+  let right = sourceBPressureBoundary(rightUv, center);
+  let down = sourceBPressureBoundary(downUv, center);
+  let up = sourceBPressureBoundary(upUv, center);
   let gradient = vec2f(right - left, up - down) * 0.5;
-  let velocity = textureSampleLevel(sourceA, linearSampler, uv, 0.0).xy;
-  let updated = maxVelocityClamp(velocity - gradient);
+  let velocity = sourceAVelocityBlocked(uv);
+  var updated = maxVelocityClamp(velocity - gradient);
+  if (obstacleAtUv(leftUv)) {
+    updated.x = max(updated.x, 0.0);
+  }
+  if (obstacleAtUv(rightUv)) {
+    updated.x = min(updated.x, 0.0);
+  }
+  if (obstacleAtUv(downUv)) {
+    updated.y = max(updated.y, 0.0);
+  }
+  if (obstacleAtUv(upUv)) {
+    updated.y = min(updated.y, 0.0);
+  }
   storeValue(id, vec4f(updated, 0.0, 1.0));
 }
 `

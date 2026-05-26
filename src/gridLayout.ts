@@ -23,6 +23,11 @@ export type GridCell = {
   readonly row: number
 }
 
+export type GridMask = GridLayout & {
+  readonly data: Uint32Array
+  readonly version: number
+}
+
 export type GridPaintAction = {
   readonly enabled: boolean
 }
@@ -59,6 +64,21 @@ export function resolveGridCell(layout: GridLayout, point: GridPoint): GridCell 
   if (column < 0 || row < 0 || column >= layout.columns || row >= layout.rows) return null
 
   return { column, row }
+}
+
+export function createGridMask(viewport: GridViewport, cellSizePx: number, selection: GridSelection): GridMask {
+  const layout = resolveGridLayout(viewport, cellSizePx)
+  const cellCount = layout.columns * layout.rows
+  const data =
+    selection.columns === layout.columns && selection.rows === layout.rows
+      ? selection.toMaskWords()
+      : new Uint32Array(cellCount)
+
+  return {
+    ...layout,
+    data,
+    version: selection.version,
+  }
 }
 
 export class GridSelection {

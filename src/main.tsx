@@ -10,6 +10,7 @@ import {
 import {
   GridSelection,
   beginGridPaint,
+  createGridMask,
   paintGridCell,
   resolveGridCell,
   resolveGridCellSegment,
@@ -115,18 +116,15 @@ async function start(canvas: HTMLCanvasElement, statusElement: HTMLElement): Pro
     const dt = Math.min(Math.max((time - lastFrameTime) / 1000, 1 / 240), 1 / 30)
     lastFrameTime = time
 
+    const gridMask = createGridMask({ width: canvas.width, height: canvas.height }, gridCellSizePx(), gridSelection)
+    simulation.setObstacleMask(gridMask)
     simulation.step(dt)
     simulation.render(context.getCurrentTexture().createView(), format, {
       grid: {
         cellSizePx: gridCellSizePx(),
         lineWidthPx: renderPixelRatio,
         opacity: 0.48,
-        activeCells: {
-          columns: gridSelection.columns,
-          rows: gridSelection.rows,
-          data: gridSelection.toMaskWords(),
-          version: gridSelection.version,
-        },
+        activeCells: gridMask,
       },
     })
     animationFrame = requestAnimationFrame(frame)
