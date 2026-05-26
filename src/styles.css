@@ -158,60 +158,159 @@ body {
 
 .cell-window {
   display: grid;
-  gap: 12px;
-  min-height: 56px;
+  gap: 10px;
+  min-height: 120px;
   font: 12px/1.3 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
-.cell-window__modes {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px;
-}
-
-.cell-window__mode {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  min-width: 0;
+.cell-window__add-group {
   height: 30px;
-  padding: 0 7px;
   color: #d7e3e6;
-  background: rgba(2, 6, 8, 0.68);
-  border: 1px solid rgba(82, 210, 228, 0.25);
+  background: rgba(17, 84, 96, 0.46);
+  border: 1px solid rgba(82, 210, 228, 0.34);
   border-radius: 4px;
   font: inherit;
   cursor: pointer;
 }
 
-.cell-window__mode:hover,
-.cell-window__mode:focus-visible {
+.cell-window__add-group:hover,
+.cell-window__add-group:focus-visible {
   color: #ffffff;
-  border-color: rgba(82, 210, 228, 0.5);
+  border-color: rgba(82, 210, 228, 0.58);
   outline: none;
 }
 
-.cell-window__mode[data-active='true'] {
+.cell-window__groups {
+  display: grid;
+  gap: 8px;
+}
+
+.cell-group {
+  overflow: hidden;
+  background: rgba(2, 6, 8, 0.48);
+  border: 1px solid rgba(82, 210, 228, 0.22);
+  border-radius: 5px;
+}
+
+.cell-group[data-active='true'] {
+  border-color: rgba(82, 210, 228, 0.58);
+}
+
+.cell-group__summary {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 42px;
+  gap: 10px;
+  padding: 7px 8px;
+  color: #d7e3e6;
+  background: transparent;
+  border: 0;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cell-group__summary:hover,
+.cell-group__summary:focus-visible {
   color: #ffffff;
-  background: rgba(17, 84, 96, 0.72);
-  border-color: rgba(82, 210, 228, 0.62);
+  background: rgba(17, 84, 96, 0.38);
+  outline: none;
 }
 
-.cell-window__swatch {
+.cell-group__swatch {
   flex: 0 0 auto;
-  width: 8px;
-  height: 8px;
-  border-radius: 2px;
-  background: #ff0a05;
+  width: 24px;
+  height: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.68);
+  border-radius: 4px;
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.28);
 }
 
-.cell-window__mode[data-mode='emitter'] .cell-window__swatch {
-  background: #2eff47;
+.cell-group__summary-text {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
 }
 
-.cell-window__mode[data-mode='sink'] .cell-window__swatch {
-  background: #3452ff;
+.cell-group__name {
+  overflow: hidden;
+  color: #ffffff;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cell-group__type {
+  color: rgba(215, 227, 230, 0.64);
+  text-transform: capitalize;
+}
+
+.cell-group__settings {
+  display: grid;
+  grid-template-columns: 1fr 112px 58px;
+  gap: 8px;
+  padding: 0 8px 8px;
+}
+
+.cell-group__field {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  color: rgba(215, 227, 230, 0.72);
+}
+
+.cell-group__field input,
+.cell-group__field select {
+  min-width: 0;
+  height: 28px;
+  color: #f2f8f9;
+  background: rgba(2, 6, 8, 0.72);
+  border: 1px solid rgba(82, 210, 228, 0.25);
+  border-radius: 4px;
+  font: inherit;
+}
+
+.cell-group__field input[type='text'],
+.cell-group__field select {
+  padding: 0 7px;
+}
+
+.cell-group__field input[type='color'] {
+  padding: 2px;
+}
+
+.cell-group__field input:focus,
+.cell-group__field select:focus {
+  border-color: rgba(82, 210, 228, 0.55);
+  outline: none;
+}
+
+.cell-group__field--color {
+  min-width: 58px;
+}
+
+.cell-group__delete {
+  grid-column: 1 / -1;
+  height: 28px;
+  color: #ffd7d7;
+  background: rgba(120, 18, 24, 0.28);
+  border: 1px solid rgba(255, 92, 92, 0.28);
+  border-radius: 4px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.cell-group__delete:hover:not(:disabled),
+.cell-group__delete:focus-visible {
+  color: #ffffff;
+  border-color: rgba(255, 92, 92, 0.54);
+  outline: none;
+}
+
+.cell-group__delete:disabled {
+  color: rgba(215, 227, 230, 0.34);
+  cursor: default;
 }
 
 .cursor-window {
@@ -347,6 +446,71 @@ body {
 .curve-editor__button:disabled {
   color: rgba(215, 227, 230, 0.36);
   cursor: default;
+}
+
+.confirm-dialog__overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgba(0, 0, 0, 0.44);
+}
+
+.confirm-dialog {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  z-index: 41;
+  display: grid;
+  width: min(320px, calc(100vw - 32px));
+  gap: 12px;
+  padding: 14px;
+  color: #d7e3e6;
+  background: rgba(7, 13, 15, 0.98);
+  border: 1px solid rgba(82, 210, 228, 0.36);
+  border-radius: 6px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.55);
+  transform: translate(-50%, -50%);
+}
+
+.confirm-dialog__title {
+  margin: 0;
+  color: #ffffff;
+  font: 600 14px/1.25 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.confirm-dialog__description {
+  margin: 0;
+  color: rgba(215, 227, 230, 0.76);
+  font: 12px/1.4 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.confirm-dialog__actions {
+  display: flex;
+  justify-content: end;
+  gap: 8px;
+}
+
+.confirm-dialog__button {
+  height: 30px;
+  padding: 0 10px;
+  color: #d7e3e6;
+  background: rgba(2, 6, 8, 0.72);
+  border: 1px solid rgba(82, 210, 228, 0.25);
+  border-radius: 4px;
+  font: 12px/1.2 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  cursor: pointer;
+}
+
+.confirm-dialog__button:hover,
+.confirm-dialog__button:focus-visible {
+  color: #ffffff;
+  border-color: rgba(82, 210, 228, 0.52);
+  outline: none;
+}
+
+.confirm-dialog__button--danger {
+  color: #ffd7d7;
+  border-color: rgba(255, 92, 92, 0.35);
 }
 
 #viewport {

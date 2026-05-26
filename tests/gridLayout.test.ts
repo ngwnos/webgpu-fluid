@@ -1,14 +1,21 @@
 import { describe, expect, test } from 'bun:test'
 
 import {
+  DEFAULT_GRID_BLOCK_GROUPS,
   GridSelection,
   beginGridPaint,
   createGridMask,
+  encodeGridBlock,
   paintGridCell,
   resolveGridCell,
   resolveGridCellSegment,
   resolveGridLayout,
 } from '../src/gridLayout'
+
+const blockGroups = {
+  groups: DEFAULT_GRID_BLOCK_GROUPS,
+  version: 7,
+}
 
 describe('resolveGridLayout', () => {
   test('fits only complete square cells and centers leftover margin', () => {
@@ -68,7 +75,7 @@ describe('GridSelection painting', () => {
     expect(selection.has({ column: 2, row: 1 })).toBe(false)
   })
 
-  test('replaces different block types with the selected placement mode', () => {
+  test('replaces different block groups with the selected placement group', () => {
     const selection = new GridSelection(4, 3)
     selection.set({ column: 1, row: 1 }, 'solid')
     selection.set({ column: 2, row: 1 }, 'sink')
@@ -80,7 +87,7 @@ describe('GridSelection painting', () => {
     expect(selection.get({ column: 2, row: 1 })).toBe('emitter')
   })
 
-  test('toggles off only when painting starts on the selected block type', () => {
+  test('toggles off only when painting starts on the selected block group', () => {
     const selection = new GridSelection(4, 3)
     selection.set({ column: 1, row: 1 }, 'sink')
     selection.set({ column: 2, row: 1 }, 'emitter')
@@ -103,13 +110,13 @@ describe('GridSelection painting', () => {
 })
 
 describe('createGridMask', () => {
-  test('packages the current centered square grid and block types into a row-major mask', () => {
+  test('packages the current centered square grid and block groups into a row-major mask', () => {
     const selection = new GridSelection(5, 3)
     selection.set({ column: 2, row: 1 }, 'solid')
     selection.set({ column: 3, row: 1 }, 'emitter')
     selection.set({ column: 4, row: 1 }, 'sink')
 
-    const mask = createGridMask({ width: 103, height: 74 }, 20, selection)
+    const mask = createGridMask({ width: 103, height: 74 }, 20, selection, blockGroups)
 
     expect(mask.cellSizePx).toBe(20)
     expect(mask.columns).toBe(5)
@@ -118,9 +125,27 @@ describe('createGridMask', () => {
     expect(mask.marginY).toBe(7)
     expect(Array.from(mask.data)).toEqual([
       0, 0, 0, 0, 0,
-      0, 0, 1, 2, 3,
+      0,
+      0,
+      encodeGridBlock(DEFAULT_GRID_BLOCK_GROUPS[0]),
+      encodeGridBlock(DEFAULT_GRID_BLOCK_GROUPS[1]),
+      encodeGridBlock(DEFAULT_GRID_BLOCK_GROUPS[2]),
       0, 0, 0, 0, 0,
     ])
     expect(mask.version).toBe(selection.version)
+    expect(mask.groupVersion).toBe(blockGroups.version)
+  })
+
+  test('re-resolves existing cells when their group settings change', () => {
+    const selection = new GridSelection(2, 1)
+    selection.set({ column: 0, row: 0 }, 'custom')
+    const customGroup = { id: 'custom', name: 'Custom', blockType: 'emitter' as const, color: '#123456' }
+
+    const mask = createGridMask({ width: 40, height: 20 }, 20, selection, {
+      groups: [customGroup],
+      version: 3,
+    })
+
+    expect(mask.data[0]).toBe(encodeGridBlock(customGroup))
   })
 })

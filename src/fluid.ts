@@ -57,6 +57,7 @@ export type GridOverlayMask = {
   readonly rows: number
   readonly data: Uint32Array
   readonly version: number
+  readonly groupVersion?: number
 }
 
 export type FluidObstacleMask = GridOverlayMask & {
@@ -387,6 +388,7 @@ export class WhiteDyeFluidSimulation {
       mask.marginX,
       mask.marginY,
       mask.version,
+      mask.groupVersion ?? 0,
     ].join(':')
     if (key === this.obstacleMaskKey) return
 
@@ -1075,7 +1077,7 @@ fn blockAtUv(uv: vec2f) -> u32 {
 
   let cell = vec2u(floor(local / cellSize));
   let maskIndex = cell.y * u32(columns) + cell.x;
-  return obstacleCells[maskIndex];
+  return obstacleCells[maskIndex] & 255u;
 }
 
 fn wallAtUv(uv: vec2f) -> bool {
@@ -1115,7 +1117,7 @@ fn blockEffectAtUv(uv: vec2f) -> vec4f {
         continue;
       }
 
-      let block = obstacleCells[u32(cell.y) * u32(columns) + u32(cell.x)];
+      let block = obstacleCells[u32(cell.y) * u32(columns) + u32(cell.x)] & 255u;
       if (block != 2u && block != 3u) {
         continue;
       }
@@ -1442,7 +1444,8 @@ fn fragmentMain(input: VertexOut) -> @location(0) vec4f {
   let cell = local / cellSize;
   let cellIndex = vec2u(floor(cell));
   let maskIndex = cellIndex.y * u32(columns) + cellIndex.x;
-  let block = activeCells[maskIndex];
+  let word = activeCells[maskIndex];
+  let block = word & 255u;
   let isActive = block != 0u;
   let wrapped = fract(cell);
   let distanceToLine = min(
@@ -1452,13 +1455,11 @@ fn fragmentMain(input: VertexOut) -> @location(0) vec4f {
   let halfLineWidth = max(grid.metrics.w * 0.5, 0.125);
   let lineAlpha = (1.0 - smoothstep(halfLineWidth, halfLineWidth + 1.0, distanceToLine)) * grid.offset.z;
   let fillAlpha = select(0.0, 0.42, isActive);
-  var fillColor = vec3f(1.0, 0.04, 0.02);
-  if (block == 2u) {
-    fillColor = vec3f(0.18, 1.0, 0.28);
-  }
-  if (block == 3u) {
-    fillColor = vec3f(0.20, 0.32, 1.0);
-  }
+  let fillColor = vec3f(
+    f32((word >> 8u) & 255u) / 255.0,
+    f32((word >> 16u) & 255u) / 255.0,
+    f32((word >> 24u) & 255u) / 255.0,
+  );
   let alpha = fillAlpha + lineAlpha * (1.0 - fillAlpha);
   let color = (
     fillColor * fillAlpha +

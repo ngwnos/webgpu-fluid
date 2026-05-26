@@ -2,8 +2,8 @@ import './styles.css'
 import { createRoot } from 'react-dom/client'
 
 import { AppMenu } from './AppMenu'
+import { getActiveBlockGroupId, getBlockGroupCollection } from './blockGroups'
 import { resolveCanvasViewport } from './canvasViewport'
-import { getCellPlacementMode } from './cellPlacementMode'
 import {
   CURSOR_MOVEMENT_SAMPLE_INTERVAL_MS,
   advanceCursorMovementEnvelope,
@@ -126,7 +126,12 @@ async function start(canvas: HTMLCanvasElement, statusElement: HTMLElement): Pro
     const dt = Math.min(Math.max((time - lastFrameTime) / 1000, 1 / 240), 1 / 30)
     lastFrameTime = time
 
-    const gridMask = createGridMask({ width: canvas.width, height: canvas.height }, gridCellSizePx(), gridSelection)
+    const gridMask = createGridMask(
+      { width: canvas.width, height: canvas.height },
+      gridCellSizePx(),
+      gridSelection,
+      getBlockGroupCollection(),
+    )
     simulation.setObstacleMask(gridMask)
     simulation.step(dt)
     simulation.render(context.getCurrentTexture().createView(), format, {
@@ -220,7 +225,7 @@ async function start(canvas: HTMLCanvasElement, statusElement: HTMLElement): Pro
     lastPaintCell = null
     if (!cell) return
 
-    activePaint = beginGridPaint(gridSelection, cell, getCellPlacementMode())
+    activePaint = beginGridPaint(gridSelection, cell, getActiveBlockGroupId())
     lastPaintCell = cell
   }
 
