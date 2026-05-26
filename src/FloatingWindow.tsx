@@ -14,6 +14,7 @@ export type FloatingWindowProps = {
   readonly onOpenChange: (open: boolean) => void
   readonly defaultPosition?: Point
   readonly defaultCollapsed?: boolean
+  readonly className?: string
   readonly children: ReactNode
 }
 
@@ -28,6 +29,7 @@ export function FloatingWindow({
   onOpenChange,
   defaultPosition = { x: 24, y: 56 },
   defaultCollapsed = false,
+  className,
   children,
 }: FloatingWindowProps): React.JSX.Element {
   const [collapsed, setCollapsed] = useState(defaultCollapsed)
@@ -73,7 +75,7 @@ export function FloatingWindow({
       <Dialog.Portal>
         <Dialog.Content
           ref={contentRef}
-          className="floating-window"
+          className={['floating-window', className].filter(Boolean).join(' ')}
           style={{ transform: `translate3d(${position.x}px, ${position.y}px, 0)` }}
           onInteractOutside={(event) => event.preventDefault()}
           onOpenAutoFocus={(event) => event.preventDefault()}

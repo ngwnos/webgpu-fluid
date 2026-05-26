@@ -6,6 +6,7 @@ import {
   setCellPlacementMode,
   subscribeCellPlacementMode,
 } from './cellPlacementMode'
+import { CurveEditor } from './CurveEditor'
 import { CursorMovementGraph } from './CursorMovementGraph'
 import { FloatingWindow } from './FloatingWindow'
 import type { GridBlockType } from './gridLayout'
@@ -13,6 +14,7 @@ import type { GridBlockType } from './gridLayout'
 export const VIEW_FLOATING_WINDOWS = [
   { id: 'cell', title: 'Cell', defaultPosition: { x: 20, y: 56 } },
   { id: 'cursor', title: 'Cursor', defaultPosition: { x: 356, y: 56 } },
+  { id: 'curve', title: 'Curve Editor', defaultPosition: { x: 300, y: 96 } },
 ] as const
 
 const CELL_PLACEMENT_MODES: readonly {
@@ -27,6 +29,7 @@ const CELL_PLACEMENT_MODES: readonly {
 export function AppMenu(): React.JSX.Element {
   const [cellWindowOpen, setCellWindowOpen] = useState(false)
   const [cursorWindowOpen, setCursorWindowOpen] = useState(false)
+  const [curveWindowOpen, setCurveWindowOpen] = useState(false)
   const [activeCellPlacementMode, setActiveCellPlacementMode] = useState<GridBlockType>(() =>
     getCellPlacementMode(),
   )
@@ -38,7 +41,11 @@ export function AppMenu(): React.JSX.Element {
       setCellWindowOpen(true)
       return
     }
-    setCursorWindowOpen(true)
+    if (id === 'cursor') {
+      setCursorWindowOpen(true)
+      return
+    }
+    setCurveWindowOpen(true)
   }
 
   return (
@@ -127,6 +134,16 @@ export function AppMenu(): React.JSX.Element {
         <div className="cursor-window">
           <CursorMovementGraph />
         </div>
+      </FloatingWindow>
+
+      <FloatingWindow
+        title="Curve Editor"
+        open={curveWindowOpen}
+        onOpenChange={setCurveWindowOpen}
+        defaultPosition={VIEW_FLOATING_WINDOWS[2].defaultPosition}
+        className="floating-window--curve"
+      >
+        <CurveEditor />
       </FloatingWindow>
     </>
   )

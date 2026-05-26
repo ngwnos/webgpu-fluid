@@ -105,6 +105,10 @@ body {
   user-select: none;
 }
 
+.floating-window--curve {
+  width: min(456px, calc(100vw - 24px));
+}
+
 .floating-window__header {
   display: flex;
   align-items: center;
@@ -219,6 +223,130 @@ body {
 .cursor-window .cursor-movement-graph {
   width: 100%;
   height: 34px;
+}
+
+.curve-editor {
+  display: grid;
+  gap: 10px;
+  outline: none;
+  font: 12px/1.3 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.curve-editor:focus-visible {
+  outline: 1px solid rgba(82, 210, 228, 0.55);
+  outline-offset: 3px;
+}
+
+.curve-editor__plot {
+  display: block;
+  width: 100%;
+  height: auto;
+  background: #020608;
+  border: 1px solid rgba(82, 210, 228, 0.28);
+  border-radius: 4px;
+  cursor: crosshair;
+}
+
+.curve-editor__plot-background {
+  fill: rgba(255, 255, 255, 0.02);
+}
+
+.curve-editor__grid-line {
+  stroke: rgba(172, 200, 207, 0.16);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.curve-editor__diagonal {
+  fill: none;
+  stroke: rgba(172, 200, 207, 0.28);
+  stroke-width: 1;
+  stroke-dasharray: 4 5;
+  vector-effect: non-scaling-stroke;
+}
+
+.curve-editor__curve {
+  fill: none;
+  stroke: #f2f8f9;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.curve-editor__point-hit {
+  fill: transparent;
+  cursor: grab;
+}
+
+.curve-editor__point {
+  fill: #f2f8f9;
+  stroke: #020608;
+  stroke-width: 2;
+  pointer-events: none;
+  vector-effect: non-scaling-stroke;
+}
+
+.curve-editor__point[data-selected='true'] {
+  fill: #2eff47;
+  stroke: rgba(242, 248, 249, 0.92);
+}
+
+.curve-editor__controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(76px, 1fr)) repeat(2, minmax(68px, auto));
+  gap: 6px;
+  align-items: end;
+}
+
+.curve-editor__field {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  color: rgba(215, 227, 230, 0.78);
+}
+
+.curve-editor__field input {
+  min-width: 0;
+  height: 28px;
+  padding: 0 7px;
+  color: #f2f8f9;
+  background: rgba(2, 6, 8, 0.76);
+  border: 1px solid rgba(82, 210, 228, 0.25);
+  border-radius: 4px;
+  font: 12px/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.curve-editor__field input:focus {
+  border-color: rgba(82, 210, 228, 0.55);
+  outline: none;
+}
+
+.curve-editor__field input:disabled {
+  color: rgba(215, 227, 230, 0.4);
+}
+
+.curve-editor__button {
+  height: 28px;
+  padding: 0 9px;
+  color: #d7e3e6;
+  background: rgba(2, 6, 8, 0.68);
+  border: 1px solid rgba(82, 210, 228, 0.25);
+  border-radius: 4px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.curve-editor__button:hover:not(:disabled),
+.curve-editor__button:focus-visible {
+  color: #ffffff;
+  border-color: rgba(82, 210, 228, 0.5);
+  outline: none;
+}
+
+.curve-editor__button:disabled {
+  color: rgba(215, 227, 230, 0.36);
+  cursor: default;
 }
 
 #viewport {
