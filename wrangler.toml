@@ -1,0 +1,15 @@
+name = "webgpu-fluid"
+compatibility_date = "2026-05-27"
+workers_dev = false
+
+[[routes]]
+pattern = "webgpu-fluid.vibe-coded.com"
+custom_domain = true
+
+[assets]
+directory = "./dist"
+html_handling = "auto-trailing-slash"
+not_found_handling = "single-page-application"
+
+[build]
+command = "bun run build"
